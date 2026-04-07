@@ -3,7 +3,7 @@ mod window;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .manage(ssh::AppState::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -15,7 +15,14 @@ pub fn run() {
             ssh::stop_tail,
             window::show_main_window,
             window::default_ssh_key_dir
-        ])
+        ]);
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        window::focus_main_window(app);
+    }));
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
