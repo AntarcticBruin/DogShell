@@ -29,10 +29,13 @@ const {
   selectedFile,
   showFavorites,
   tailToken,
+  terminalToken,
   content,
+  terminalContent,
   isConnecting,
   errorMsg,
   logViewer,
+  terminalViewer,
   isAutoScroll,
   currentHostFavorites,
   highlightedLines,
@@ -47,6 +50,8 @@ const {
   enter,
   startTail,
   stopTail,
+  writeTerminal,
+  resizeTerminal,
   up,
   isFavorite,
   toggleFavorite,
@@ -81,14 +86,17 @@ const {
           v-else
           v-model:current-path="currentPath"
           v-model:content="content"
+          v-model:terminal-content="terminalContent"
           v-model:is-auto-scroll="isAutoScroll"
           v-model:log-viewer-ref="logViewer"
+          v-model:terminal-viewer-ref="terminalViewer"
           :session-id="sessionId"
           :show-favorites="showFavorites"
           :entries="entries"
           :current-host-favorites="currentHostFavorites"
           :selected-file="selectedFile"
           :tail-token="tailToken"
+          :terminal-token="terminalToken"
           :highlighted-lines="highlightedLines"
           :is-favorite="isFavorite"
           @toggle-favorites="toggleFavoritesPanel"
@@ -102,6 +110,8 @@ const {
           @clear="clearContent"
           @stop="stopTail"
           @start="startTail"
+          @write-terminal="writeTerminal"
+          @resize-terminal="resizeTerminal"
         />
       </main>
     </div>

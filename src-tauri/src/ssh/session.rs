@@ -65,6 +65,7 @@ pub async fn establish_for_state(opts: ConnectOptions) -> AppResult<Arc<SshConn>
         handle: AsyncMutex::new(handle),
         opts,
         watchers: Mutex::new(HashMap::new()),
+        terminal: AsyncMutex::new(None),
     }))
 }
 

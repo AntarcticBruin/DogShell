@@ -54,6 +54,12 @@ export type TailEvent = {
   chunk: string;
 };
 
+export type TerminalEvent = {
+  token: string;
+  session_id: string;
+  chunk: string;
+};
+
 export type HighlightTone =
   | "default"
   | "error"

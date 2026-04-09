@@ -11,6 +11,7 @@ import type {
   HighlightedLine,
   HostProfile,
   TailEvent,
+  TerminalEvent,
 } from "../types/app";
 import { highlightLogLine } from "../utils/logHighlight";
 
@@ -57,11 +58,14 @@ export function useLogCatApp() {
   const showFavorites = ref(false);
   const tailToken = ref<string | null>(null);
   const content = ref("");
+  const terminalToken = ref<string | null>(null);
+  const terminalContent = ref("");
   const loading = ref(false);
   const isConnecting = ref(false);
   const errorMsg = ref("");
 
   const logViewer = ref<HTMLElement | null>(null);
+  const terminalViewer = ref<HTMLElement | null>(null);
   const isAutoScroll = ref(true);
   const favoritePaths = computed(() => {
     const paths = new Set<string>();
@@ -85,7 +89,9 @@ export function useLogCatApp() {
   let hasPendingHighlightedLine = false;
   let pendingHighlightedChunk = "";
 
-  let unlisten: (() => void) | null = null;
+  let unlistenTail: (() => void) | null = null;
+  let unlistenTerminal: (() => void) | null = null;
+  let isStartingTerminal = false;
 
   function visibleEntries(list: DirEntry[]) {
     return list.filter((entry) => entry.kind === "dir" || (entry.kind === "file" && entry.is_text));
@@ -173,6 +179,10 @@ export function useLogCatApp() {
     if (highlightedLines.value.length > MAX_LINES) {
       highlightedLines.value.splice(0, highlightedLines.value.length - MAX_LINES);
     }
+  }
+
+  function appendTerminalChunk(chunk: string) {
+    terminalContent.value += chunk;
   }
 
   function resetHostForm() {
@@ -295,19 +305,10 @@ export function useLogCatApp() {
       currentPath.value = "/";
       showFavorites.value = false;
       clearDirectoryState();
+      await ensureTailListener();
+      await ensureTerminalListener();
+      await startTerminal();
       await refresh();
-
-      if (!unlisten) {
-        unlisten = await listen<TailEvent>("tail_data", (event) => {
-          if (event.payload?.token === tailToken.value) {
-            content.value += event.payload.chunk;
-            appendHighlightedChunk(event.payload.chunk);
-            if (isAutoScroll.value) {
-              scrollToBottom();
-            }
-          }
-        });
-      }
     } catch (error) {
       errorMsg.value = String(error);
       activeTab.value = "hosts";
@@ -322,6 +323,7 @@ export function useLogCatApp() {
     if (!sessionId.value) return;
 
     await stopTail();
+    await stopTerminal();
     try {
       await invoke("disconnect_ssh", { sessionId: sessionId.value });
     } catch (error) {
@@ -332,9 +334,39 @@ export function useLogCatApp() {
     currentConnectedHostId.value = null;
     clearDirectoryState();
     content.value = "";
+    terminalContent.value = "";
+    isStartingTerminal = false;
     resetHighlightedLines();
     selectedFile.value = null;
     showFavorites.value = false;
+  }
+
+  async function ensureTailListener() {
+    if (unlistenTail) return;
+
+    unlistenTail = await listen<TailEvent>("tail_data", (event) => {
+      if (event.payload?.token === tailToken.value) {
+        content.value += event.payload.chunk;
+        appendHighlightedChunk(event.payload.chunk);
+        if (isAutoScroll.value) {
+          scrollToBottom();
+        }
+      }
+    });
+  }
+
+  async function ensureTerminalListener() {
+    if (unlistenTerminal) return;
+
+    unlistenTerminal = await listen<TerminalEvent>("terminal_data", (event) => {
+      if (!event.payload || event.payload.session_id !== sessionId.value) {
+        return;
+      }
+
+      if (event.payload.token === terminalToken.value || (isStartingTerminal && !terminalToken.value)) {
+        appendTerminalChunk(event.payload.chunk);
+      }
+    });
   }
 
   async function refresh(options?: { force?: boolean; path?: string }) {
@@ -383,8 +415,9 @@ export function useLogCatApp() {
     if (!sessionId.value) return;
 
     showFavorites.value = false;
-    selectedFile.value = null;
     currentPath.value = path;
+
+    void closeSelectedFile();
 
     const cachedEntries = getCachedDirectoryEntries(sessionId.value, path);
     if (cachedEntries) {
@@ -394,7 +427,14 @@ export function useLogCatApp() {
     void refresh({ path });
   }
 
-  function enter(entry: DirEntry) {
+  async function closeSelectedFile() {
+    await stopTail();
+    selectedFile.value = null;
+    content.value = "";
+    resetHighlightedLines();
+  }
+
+  async function enter(entry: DirEntry) {
     if (entry.kind === "dir") {
       openDirectory(entry.path);
       return;
@@ -402,8 +442,14 @@ export function useLogCatApp() {
 
     if (entry.kind === "file" && entry.is_text) {
       showFavorites.value = false;
+
+      if (selectedFile.value === entry.path) {
+        await closeSelectedFile();
+        return;
+      }
+
       selectedFile.value = entry.path;
-      void startTail();
+      await startTail();
     }
   }
 
@@ -435,6 +481,69 @@ export function useLogCatApp() {
     }
 
     tailToken.value = null;
+  }
+
+  async function startTerminal(cols?: number, rows?: number) {
+    if (!sessionId.value) return;
+
+    await stopTerminal();
+    terminalContent.value = "";
+    terminalToken.value = null;
+    isStartingTerminal = true;
+
+    try {
+      terminalToken.value = await invoke<string>("start_terminal", {
+        sessionId: sessionId.value,
+        cols,
+        rows,
+      });
+    } catch (error) {
+      errorMsg.value = `Failed to start terminal: ${error}`;
+    } finally {
+      isStartingTerminal = false;
+    }
+  }
+
+  async function stopTerminal() {
+    if (!sessionId.value || !terminalToken.value) return;
+
+    try {
+      await invoke("stop_terminal", { sessionId: sessionId.value, token: terminalToken.value });
+    } catch (error) {
+      console.error(error);
+    }
+
+    terminalToken.value = null;
+    isStartingTerminal = false;
+  }
+
+  async function writeTerminal(data: string) {
+    if (!sessionId.value || !terminalToken.value || !data) return;
+
+    try {
+      await invoke("write_terminal", {
+        sessionId: sessionId.value,
+        token: terminalToken.value,
+        data,
+      });
+    } catch (error) {
+      errorMsg.value = `Failed to write terminal: ${error}`;
+    }
+  }
+
+  async function resizeTerminal(cols: number, rows: number) {
+    if (!sessionId.value || !terminalToken.value) return;
+
+    try {
+      await invoke("resize_terminal", {
+        sessionId: sessionId.value,
+        token: terminalToken.value,
+        cols,
+        rows,
+      });
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   function up() {
@@ -492,7 +601,13 @@ export function useLogCatApp() {
     showFavorites.value = false;
 
     if (item.kind === "dir") {
+      await closeSelectedFile();
       openDirectory(item.path);
+      return;
+    }
+
+    if (selectedFile.value === item.path) {
+      await closeSelectedFile();
       return;
     }
 
@@ -541,8 +656,11 @@ export function useLogCatApp() {
   }
 
   onBeforeUnmount(() => {
-    if (unlisten) {
-      unlisten();
+    if (unlistenTail) {
+      unlistenTail();
+    }
+    if (unlistenTerminal) {
+      unlistenTerminal();
     }
   });
 
@@ -569,11 +687,14 @@ export function useLogCatApp() {
     favorites,
     showFavorites,
     tailToken,
+    terminalToken,
     content,
+    terminalContent,
     loading,
     isConnecting,
     errorMsg,
     logViewer,
+    terminalViewer,
     isAutoScroll,
     currentHostFavorites,
     highlightedLines,
@@ -588,6 +709,10 @@ export function useLogCatApp() {
     enter,
     startTail,
     stopTail,
+    startTerminal,
+    stopTerminal,
+    writeTerminal,
+    resizeTerminal,
     up,
     isFavorite,
     toggleFavorite,

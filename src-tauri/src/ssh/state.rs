@@ -1,6 +1,7 @@
 use super::types::ConnectOptions;
 use russh::client::Handle;
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -27,8 +28,15 @@ pub struct SshConn {
     pub handle: AsyncMutex<Handle<super::session::Client>>,
     pub opts: ConnectOptions,
     pub watchers: StdMutex<HashMap<String, Arc<Watcher>>>,
+    pub terminal: AsyncMutex<Option<Arc<TerminalSession>>>,
 }
 
 pub struct Watcher {
-    pub stop: std::sync::atomic::AtomicBool,
+    pub stop: AtomicBool,
+}
+
+pub struct TerminalSession {
+    pub token: String,
+    pub stop: AtomicBool,
+    pub writer: AsyncMutex<russh::ChannelWriteHalf<russh::client::Msg>>,
 }

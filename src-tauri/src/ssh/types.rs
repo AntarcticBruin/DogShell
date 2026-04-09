@@ -49,3 +49,10 @@ pub struct TailEvent {
     pub path: String,
     pub chunk: String,
 }
+
+#[derive(Serialize, Clone)]
+pub struct TerminalEvent {
+    pub token: String,
+    pub session_id: String,
+    pub chunk: String,
+}

@@ -109,7 +109,33 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .toggle-check input:checked + .toggle-box { border-color: #2483c5; background: linear-gradient(180deg, #1581c4 0%, #0e639c 100%); box-shadow: 0 0 0 3px rgba(14, 99, 156, 0.16); }
 .toggle-check input:checked + .toggle-box::after { opacity: 1; transform: rotate(45deg) scale(1); }
 .toggle-check input:focus-visible + .toggle-box { box-shadow: 0 0 0 3px rgba(14, 99, 156, 0.28); }
+.viewer-stack { position: relative; flex: 1; min-height: 0; background: var(--bg-base); }
 .log-viewer { flex: 1; overflow: auto; padding: 16px; }
+.log-viewer-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(28, 28, 30, 0.97) 0%, rgba(22, 22, 24, 0.97) 100%); backdrop-filter: blur(3px); z-index: 2; border-top: 1px solid rgba(255,255,255,0.03); }
+.terminal-viewer { position: absolute; inset: 0; overflow: hidden; outline: none; background: #141414; color: #d4d4d4; }
+.terminal-viewer:focus { box-shadow: inset 0 0 0 1px rgba(14, 99, 156, 0.28); }
+.terminal-viewer.inactive { background: #141414; }
+.terminal-host { position: absolute; inset: 0; overflow: hidden; background: #141414; z-index: 0; }
+.terminal-viewer .xterm { height: 100% !important; }
+.terminal-viewer .xterm-viewport,
+.terminal-viewer .xterm-screen { height: 100% !important; }
+.terminal-viewer .xterm-screen canvas { background: #141414 !important; transform: translate(12px, 10px); }
+.terminal-viewer .xterm-viewport { overflow-y: auto !important; }
+.terminal-viewer .xterm-screen { width: 100% !important; }
+.terminal-viewer .xterm-helpers,
+.terminal-viewer .xterm-accessibility { transform: translate(12px, 10px); }
+.terminal-viewer .xterm-viewport::-webkit-scrollbar { width: 0; height: 0; }
+.terminal-viewer .xterm-viewport { scrollbar-width: none; -ms-overflow-style: none; }
+.terminal-viewer.inactive .xterm-cursor-layer,
+.terminal-viewer.inactive .xterm-cursor,
+.terminal-viewer.inactive .xterm-cursor-block,
+.terminal-viewer.inactive .xterm-cursor-bar,
+.terminal-viewer.inactive .xterm-cursor-underline { opacity: 0 !important; visibility: hidden !important; }
+.terminal-empty-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; pointer-events: none; z-index: 1; }
+.terminal-empty-card { max-width: 460px; padding: 20px 22px; border: 1px solid rgba(255,255,255,0.04); border-radius: 8px; background: rgba(37, 37, 38, 0.94); box-shadow: none; backdrop-filter: blur(6px); }
+.terminal-empty-kicker { margin-bottom: 8px; color: #7aa2c7; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
+.terminal-empty-title { color: var(--text-light); font-size: 18px; font-weight: 700; letter-spacing: 0.15px; }
+.terminal-empty-text { margin-top: 10px; color: #a6a6a6; font-size: 13px; line-height: 1.65; }
 .log-lines { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; color: #d4d4d4; }
 .log-line { white-space: pre-wrap; word-break: break-word; padding: 0 8px; margin: 0 -8px; border-left: 2px solid transparent; }
 .log-segment { color: inherit; }
@@ -126,6 +152,8 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .log-segment.tone-success { color: #7ee787; font-weight: 600; }
 .log-segment.tone-muted { color: #8b949e; }
 .empty-viewer { display: flex; height: 100%; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; opacity: 0.5; }
+.terminal-badge { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: #b7b7b7; font-size: 11px; font-weight: 700; letter-spacing: 0.25px; text-transform: uppercase; }
+.terminal-badge.active { color: #d7ecff; background: rgba(14, 99, 156, 0.14); border-color: rgba(14, 99, 156, 0.4); }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .modal-content { background: var(--bg-sidebar); width: 400px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }

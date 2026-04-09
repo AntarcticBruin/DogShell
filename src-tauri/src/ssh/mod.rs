@@ -4,6 +4,7 @@ mod parsing;
 mod session;
 mod state;
 mod tail;
+mod terminal;
 mod types;
 
 pub use state::AppState;
@@ -32,6 +33,11 @@ pub async fn disconnect_ssh(app: tauri::AppHandle, session_id: String) -> Result
             for (_, watcher) in watchers.drain() {
                 watcher.stop.store(true, Ordering::SeqCst);
             }
+        }
+        if let Some(terminal) = conn.terminal.lock().await.take() {
+            terminal.stop.store(true, Ordering::SeqCst);
+            let writer = terminal.writer.lock().await;
+            let _ = writer.close().await;
         }
         let handle = conn.handle.lock().await;
         let _ = handle.disconnect(russh::Disconnect::ByApplication, "bye", "en-US").await;
@@ -69,4 +75,52 @@ pub fn stop_tail(
     token: String,
 ) -> Result<(), String> {
     tail::stop(state, session_id, token).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn start_terminal(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    cols: Option<u32>,
+    rows: Option<u32>,
+) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    terminal::start(state.inner(), app.clone(), session_id, cols, rows)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn stop_terminal(
+    state: State<'_, AppState>,
+    session_id: String,
+    token: String,
+) -> Result<(), String> {
+    terminal::stop(state, session_id, token).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn write_terminal(
+    state: State<'_, AppState>,
+    session_id: String,
+    token: String,
+    data: String,
+) -> Result<(), String> {
+    terminal::write(state, session_id, token, data)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn resize_terminal(
+    state: State<'_, AppState>,
+    session_id: String,
+    token: String,
+    cols: u32,
+    rows: u32,
+) -> Result<(), String> {
+    terminal::resize(state, session_id, token, cols, rows)
+        .await
+        .map_err(|error| error.to_string())
 }

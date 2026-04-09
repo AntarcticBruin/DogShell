@@ -13,6 +13,10 @@ pub fn run() {
             ssh::list_dir,
             ssh::start_tail,
             ssh::stop_tail,
+            ssh::start_terminal,
+            ssh::stop_terminal,
+            ssh::write_terminal,
+            ssh::resize_terminal,
             window::show_main_window,
             window::default_ssh_key_dir
         ]);
