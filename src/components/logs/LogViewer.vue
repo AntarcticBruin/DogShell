@@ -2,9 +2,9 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { nextTick, onBeforeUnmount, onMounted, watch } from "vue";
-import type { HighlightedLine } from "../../types/app";
+import type { HighlightedLine, HighlightSegment } from "../../types/app";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 
 const content = defineModel<string>("content", { required: true });
@@ -36,6 +36,92 @@ let lastRenderedTerminalLength = 0;
 let disposeDataHandler: { dispose(): void } | null = null;
 const localLogViewerRef = ref<HTMLElement | null>(null);
 const localTerminalViewerRef = ref<HTMLElement | null>(null);
+
+const searchQuery = ref("");
+const filterQuery = ref("");
+const showSearch = ref(false);
+const showFilter = ref(false);
+const searchInputRef = ref<HTMLInputElement | null>(null);
+const filterInputRef = ref<HTMLInputElement | null>(null);
+
+const displayLines = computed(() => {
+  let lines = props.highlightedLines;
+
+  if (filterQuery.value) {
+    const lowerFilter = filterQuery.value.toLowerCase();
+    lines = lines.filter(line => {
+      const fullText = line.segments.map(s => s.text).join("");
+      return fullText.toLowerCase().includes(lowerFilter);
+    });
+  }
+
+  if (searchQuery.value) {
+    const lowerSearch = searchQuery.value.toLowerCase();
+    lines = lines.map(line => {
+      const newSegments: HighlightSegment[] = [];
+      for (const seg of line.segments) {
+        if (!seg.text.toLowerCase().includes(lowerSearch)) {
+          newSegments.push(seg);
+          continue;
+        }
+
+        let remaining = seg.text;
+        while (remaining) {
+          const idx = remaining.toLowerCase().indexOf(lowerSearch);
+          if (idx === -1) {
+            newSegments.push({ text: remaining, tone: seg.tone });
+            break;
+          }
+          if (idx > 0) {
+            newSegments.push({ text: remaining.substring(0, idx), tone: seg.tone });
+          }
+          newSegments.push({
+            text: remaining.substring(idx, idx + lowerSearch.length),
+            tone: seg.tone,
+            isMatch: true
+          });
+          remaining = remaining.substring(idx + lowerSearch.length);
+        }
+      }
+      return { tone: line.tone, segments: newSegments };
+    });
+  }
+
+  return lines;
+});
+
+function closeSearchOrFilter() {
+  showSearch.value = false;
+  showFilter.value = false;
+  searchQuery.value = "";
+  filterQuery.value = "";
+  localLogViewerRef.value?.focus();
+}
+
+function handleKeydown(e: KeyboardEvent) {
+  if (!props.selectedFile) return;
+
+  if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      showFilter.value = true;
+      showSearch.value = false;
+      searchQuery.value = "";
+      void nextTick(() => filterInputRef.value?.focus());
+    } else {
+      showSearch.value = true;
+      showFilter.value = false;
+      filterQuery.value = "";
+      void nextTick(() => searchInputRef.value?.focus());
+    }
+  } else if (e.key === 'Escape') {
+    if (showSearch.value || showFilter.value) {
+      e.preventDefault();
+      closeSearchOrFilter();
+    }
+  }
+}
+
 const terminalTheme = {
   background: "#1e1e1e",
   foreground: "#d4d4d4",
@@ -208,6 +294,8 @@ watch(
 );
 
 onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+
   terminalViewerRef.value = localTerminalViewerRef.value;
 
   terminal = new Terminal({
@@ -249,6 +337,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown);
   resizeObserver?.disconnect();
   disposeDataHandler?.dispose();
   terminal?.dispose();
@@ -263,14 +352,35 @@ onBeforeUnmount(() => {
       </div>
       <div class="actions">
         <template v-if="selectedFile">
-          <label class="toggle-check">
+          <div v-if="showSearch" class="search-bar">
+            <input
+              ref="searchInputRef"
+              v-model="searchQuery"
+              type="text"
+              placeholder="Search... (Esc to close)"
+              @keydown.esc="closeSearchOrFilter"
+            />
+            <button class="icon-btn" @click="closeSearchOrFilter">×</button>
+          </div>
+          <div v-if="showFilter" class="search-bar filter-bar">
+            <input
+              ref="filterInputRef"
+              v-model="filterQuery"
+              type="text"
+              placeholder="Filter... (Esc to close)"
+              @keydown.esc="closeSearchOrFilter"
+            />
+            <button class="icon-btn" @click="closeSearchOrFilter">×</button>
+          </div>
+
+          <label class="toggle-check" v-show="!showSearch && !showFilter">
             <input v-model="isAutoScroll" type="checkbox" />
             <span class="toggle-box" aria-hidden="true"></span>
             <span>Auto Scroll</span>
           </label>
-          <button class="btn btn-sm btn-outline" @click="emit('clear')">Clear</button>
-          <button v-if="tailToken" class="btn btn-sm btn-danger" @click="emit('stop')">Stop</button>
-          <button v-if="!tailToken" class="btn btn-sm btn-success" @click="emit('start')">Start</button>
+          <button v-show="!showSearch && !showFilter" class="btn btn-sm btn-outline" @click="emit('clear')">Clear</button>
+          <button v-if="tailToken" v-show="!showSearch && !showFilter" class="btn btn-sm btn-danger" @click="emit('stop')">Stop</button>
+          <button v-if="!tailToken" v-show="!showSearch && !showFilter" class="btn btn-sm btn-success" @click="emit('start')">Start</button>
         </template>
         <div v-else class="terminal-badge" :class="{ active: terminalToken }">
           {{ terminalToken ? "Terminal Ready" : "Initializing" }}
@@ -295,10 +405,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="selectedFile" ref="localLogViewerRef" class="log-viewer log-viewer-overlay">
+      <div v-if="selectedFile" ref="localLogViewerRef" class="log-viewer log-viewer-overlay" tabindex="-1">
         <div v-if="content" class="log-lines">
           <div
-            v-for="(line, lineIndex) in highlightedLines"
+            v-for="(line, lineIndex) in displayLines"
             :key="lineIndex"
             class="log-line"
             :class="`tone-${line.tone}`"
@@ -307,7 +417,7 @@ onBeforeUnmount(() => {
               v-for="(segment, segmentIndex) in line.segments"
               :key="`${lineIndex}-${segmentIndex}`"
               class="log-segment"
-              :class="`tone-${segment.tone}`"
+              :class="[`tone-${segment.tone}`, { 'search-match': segment.isMatch }]"
             >
               {{ segment.text }}
             </span>

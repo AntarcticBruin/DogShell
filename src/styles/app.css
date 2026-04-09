@@ -116,7 +116,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .toggle-check input:checked + .toggle-box::after { opacity: 1; transform: rotate(45deg) scale(1); }
 .toggle-check input:focus-visible + .toggle-box { box-shadow: 0 0 0 3px rgba(14, 99, 156, 0.28); }
 .viewer-stack { position: relative; flex: 1; min-height: 0; background: var(--bg-base); }
-.log-viewer { flex: 1; overflow: auto; padding: 16px; }
+.log-viewer { flex: 1; overflow: auto; padding: 16px; outline: none; }
 .log-viewer-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(28, 28, 30, 0.97) 0%, rgba(22, 22, 24, 0.97) 100%); backdrop-filter: blur(3px); z-index: 2; border-top: 1px solid rgba(255,255,255,0.03); }
 .terminal-viewer { position: absolute; inset: 0; overflow: hidden; outline: none; background: #141414; color: #d4d4d4; }
 .terminal-viewer:focus { box-shadow: inset 0 0 0 1px rgba(14, 99, 156, 0.28); }
@@ -183,7 +183,15 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .log-segment.tone-trace { color: #a5d6ff; }
 .log-segment.tone-success { color: #7ee787; font-weight: 600; }
 .log-segment.tone-muted { color: #8b949e; }
+.log-segment.search-match { background-color: rgba(234, 183, 33, 0.4); border-radius: 2px; }
 .empty-viewer { display: flex; height: 100%; align-items: center; justify-content: center; color: var(--text-muted); font-size: 13px; opacity: 0.5; }
+
+.search-bar { display: flex; align-items: center; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; padding-right: 4px; }
+.search-bar input { border: none; background: transparent; outline: none; box-shadow: none; padding: 4px 8px; font-size: 12px; width: 160px; color: var(--text-main); }
+.search-bar input:focus { border: none; box-shadow: none; }
+.search-bar .icon-btn { font-size: 14px; padding: 2px 4px; color: var(--text-muted); }
+.search-bar .icon-btn:hover { color: var(--danger); }
+.filter-bar { border-color: var(--accent); }
 .terminal-badge { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: #b7b7b7; font-size: 11px; font-weight: 700; letter-spacing: 0.25px; text-transform: uppercase; }
 .terminal-badge.active { color: #d7ecff; background: rgba(14, 99, 156, 0.14); border-color: rgba(14, 99, 156, 0.4); }
 

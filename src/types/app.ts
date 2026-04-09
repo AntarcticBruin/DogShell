@@ -80,6 +80,7 @@ export type HighlightTone =
 export type HighlightSegment = {
   text: string;
   tone: HighlightTone;
+  isMatch?: boolean;
 };
 
 export type HighlightedLine = {
