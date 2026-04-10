@@ -18,21 +18,21 @@ const emit = defineEmits<{
     <div class="modal-content action-modal">
       <div class="modal-header">
         <div>
-          <h3>重命名</h3>
+          <h3>Rename</h3>
           <div class="modal-subtitle">{{ currentPath }}</div>
         </div>
         <button class="close-modal" @click="emit('close')">×</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>名称</label>
-          <input v-model="name" placeholder="输入新名称" @keyup.enter="emit('confirm')" />
+          <label>name</label>
+          <input v-model="name" placeholder="Please enter the new name" @keyup.enter="emit('confirm')" />
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" :disabled="saving" @click="emit('close')">取消</button>
+        <button class="btn btn-outline" :disabled="saving" @click="emit('close')">Cancel</button>
         <button class="btn btn-primary" :disabled="saving || !name.trim()" @click="emit('confirm')">
-          {{ saving ? "保存中..." : "保存" }}
+          {{ saving ? "Saving..." : "Save" }}
         </button>
       </div>
     </div>

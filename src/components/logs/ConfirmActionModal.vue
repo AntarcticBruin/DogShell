@@ -26,14 +26,14 @@ const emit = defineEmits<{
         <div class="confirm-message">{{ message }}</div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" :disabled="loading" @click="emit('close')">取消</button>
+        <button class="btn btn-outline" :disabled="loading" @click="emit('close')">Cancel</button>
         <button
           class="btn"
           :class="destructive ? 'btn-danger' : 'btn-primary'"
           :disabled="loading"
           @click="emit('confirm')"
         >
-          {{ loading ? "处理中..." : confirmText }}
+          {{ loading ? "Processing..." : confirmText }}
         </button>
       </div>
     </div>

@@ -312,31 +312,31 @@ onBeforeUnmount(() => {
             class="file-context-menu-item"
             @click="handleEdit(contextMenu.entry)"
           >
-            编辑
+            Edit
           </button>
           <button
             v-if="contextMenu.entry"
             class="file-context-menu-item"
             @click="handleRename(contextMenu.entry)"
           >
-            重命名
+            Rename
           </button>
           <button
             v-if="contextMenu.entry"
             class="file-context-menu-item"
             @click="handleChangeMode(contextMenu.entry)"
           >
-            修改权限
+            Permission
           </button>
           <button
             v-if="contextMenu.entry"
             class="file-context-menu-item danger"
             @click="handleDelete(contextMenu.entry)"
           >
-            删除
+            Delete
           </button>
-          <button v-if="!contextMenu.entry" class="file-context-menu-item" @click="handleCreateFile">新建文件</button>
-          <button v-if="!contextMenu.entry" class="file-context-menu-item" @click="handleCreateDir">新建文件夹</button>
+          <button v-if="!contextMenu.entry" class="file-context-menu-item" @click="handleCreateFile">New File</button>
+          <button v-if="!contextMenu.entry" class="file-context-menu-item" @click="handleCreateDir">New Folder</button>
         </div>
       </teleport>
       

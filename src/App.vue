@@ -200,7 +200,7 @@ const {
     <CreateEntryModal
       v-model:is-open="isCreateEntryModalOpen"
       v-model:name="createEntryName"
-      :kind-label="createEntryKind === 'file' ? '文件' : '文件夹'"
+      :kind-label="createEntryKind === 'file' ? 'File' : 'Folder'"
       :current-path="currentPath"
       :saving="isCreatingEntry"
       @close="closeCreateEntryModal"
@@ -227,9 +227,9 @@ const {
 
     <ConfirmActionModal
       v-model:is-open="isDeleteConfirmOpen"
-      title="删除确认"
-      :message="deleteTargetEntry ? `确认删除 ${deleteTargetEntry.name} 吗？` : ''"
-      confirm-text="删除"
+      title="Delete Confirmation"
+      :message="deleteTargetEntry ? `Are you sure you want to delete ${deleteTargetEntry.name}?` : ''"
+      confirm-text="Delete"
       :destructive="true"
       :loading="isDeletingEntry"
       @close="closeDeleteConfirm"

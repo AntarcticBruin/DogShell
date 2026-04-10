@@ -940,7 +940,7 @@ export function useLogCatApp() {
     }
 
     if (nextName.includes("/")) {
-      errorMsg.value = "名称不能包含 /";
+      errorMsg.value = "Name cannot contain /";
       return;
     }
 
@@ -984,7 +984,7 @@ export function useLogCatApp() {
 
     const mode = chmodMode.value.trim();
     if (!/^[0-7]{3,4}$/.test(mode)) {
-      errorMsg.value = "权限必须是三位或四位八进制数字";
+      errorMsg.value = "Permissions must be a 3-digit or 4-digit octal number";
       return;
     }
 
@@ -1049,7 +1049,7 @@ export function useLogCatApp() {
     if (!sessionId.value) return;
     const kind = createEntryKind.value;
 
-    const label = kind === "file" ? "文件" : "文件夹";
+    const label = kind === "file" ? "file" : "folder";
     const name = createEntryName.value.trim();
 
     if (!name) {
@@ -1057,7 +1057,7 @@ export function useLogCatApp() {
     }
 
     if (name.includes("/")) {
-      errorMsg.value = `${label}名称不能包含 /`;
+      errorMsg.value = `${label} name cannot contain /`;
       return;
     }
 

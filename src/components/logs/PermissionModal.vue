@@ -15,9 +15,9 @@ const emit = defineEmits<{
 }>();
 
 const permissionRows = [
-  { key: "owner", label: "所有者" },
-  { key: "group", label: "组" },
-  { key: "other", label: "其他" },
+  { key: "owner", label: "Owner" },
+  { key: "group", label: "Group" },
+  { key: "other", label: "Other" },
 ] as const;
 
 const permissions = reactive({
@@ -97,17 +97,17 @@ watch(
     <div class="modal-content action-modal">
       <div class="modal-header">
         <div>
-          <h3>修改权限</h3>
+          <h3>Change Permissions</h3>
           <div class="modal-subtitle">{{ fileName }}</div>
         </div>
         <button class="close-modal" @click="emit('close')">×</button>
       </div>
       <div class="modal-body">
         <div class="permission-grid">
-          <div class="permission-grid-head">对象</div>
-          <div class="permission-grid-head">读取</div>
-          <div class="permission-grid-head">写入</div>
-          <div class="permission-grid-head">执行</div>
+          <div class="permission-grid-head">Target</div>
+          <div class="permission-grid-head">Read</div>
+          <div class="permission-grid-head">Write</div>
+          <div class="permission-grid-head">Execute</div>
 
           <template v-for="row in permissionRows" :key="row.key">
             <div class="permission-grid-label">{{ row.label }}</div>
@@ -127,15 +127,15 @@ watch(
         </div>
 
         <div class="form-group">
-          <label>八进制权限</label>
-          <input v-model="mode" placeholder="例如 755" maxlength="4" @keyup.enter="emit('confirm')" />
+          <label>Octal Permissions</label>
+          <input v-model="mode" placeholder="e.g. 755" maxlength="4" @keyup.enter="emit('confirm')" />
         </div>
-        <div class="confirm-message">可以勾选权限，也可以直接输入三位或四位八进制数字。</div>
+        <div class="confirm-message">Use the checkboxes or enter a 3-digit or 4-digit octal value directly.</div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" :disabled="saving" @click="emit('close')">取消</button>
+        <button class="btn btn-outline" :disabled="saving" @click="emit('close')">Cancel</button>
         <button class="btn btn-primary" :disabled="saving || !mode.trim()" @click="emit('confirm')">
-          {{ saving ? "保存中..." : "保存" }}
+          {{ saving ? "Saving..." : "Save" }}
         </button>
       </div>
     </div>

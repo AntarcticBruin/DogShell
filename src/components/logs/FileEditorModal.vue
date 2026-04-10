@@ -136,19 +136,19 @@ onBeforeUnmount(() => {
     <div class="modal-content file-editor-modal draggable-modal" :style="frameStyle">
       <div class="modal-header draggable-modal-header" @pointerdown="startDragging">
         <div>
-          <h3>编辑文件</h3>
+          <h3>Edit File</h3>
           <div class="file-editor-path">{{ filePath }}</div>
         </div>
         <button class="close-modal" @click="emit('close')">×</button>
       </div>
       <div class="modal-body file-editor-body">
-        <input v-model="fileName" class="file-editor-name" placeholder="文件名" readonly />
+        <input v-model="fileName" class="file-editor-name" placeholder="File name" readonly />
         <MonacoEditor v-model:content="content" :file-name="fileName" />
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline" :disabled="saving" @click="emit('close')">取消</button>
+        <button class="btn btn-outline" :disabled="saving" @click="emit('close')">Cancel</button>
         <button class="btn btn-primary" :disabled="saving" @click="emit('save')">
-          {{ saving ? "保存中..." : "保存" }}
+          {{ saving ? "Saving..." : "Save" }}
         </button>
       </div>
       <div class="file-editor-resize-hint" aria-hidden="true"></div>
