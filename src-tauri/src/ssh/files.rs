@@ -1,16 +1,21 @@
-use super::error::AppResult;
+use super::error::{AppError, AppResult};
 use super::parsing::{
     is_probably_binary_file, is_probably_text_file, should_probe_text_file, sort_entries,
 };
 use super::session::get_conn;
 use super::state::AppState;
 use super::types::{DirEntry, EntryKind, TransferProgressEvent};
+use russh::ChannelMsg;
 use russh_sftp::client::SftpSession;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const MAX_PROBED_FILES_PER_DIR: usize = 8;
 const MAX_PROBED_FILE_SIZE: u64 = 64 * 1024;
+
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
 
 fn perm_to_kind(perm: Option<u32>) -> EntryKind {
     if let Some(perm) = perm {
@@ -26,6 +31,24 @@ fn perm_to_kind(perm: Option<u32>) -> EntryKind {
         }
     }
     EntryKind::Other
+}
+
+async fn resolve_entry_kind(sftp: &SftpSession, path: &str, kind: EntryKind) -> EntryKind {
+    if kind != EntryKind::Symlink {
+        return kind;
+    }
+
+    match sftp.metadata(path).await {
+        Ok(metadata) => {
+            let resolved_kind = perm_to_kind(metadata.permissions);
+            if resolved_kind == EntryKind::Other || resolved_kind == EntryKind::Symlink {
+                EntryKind::Symlink
+            } else {
+                resolved_kind
+            }
+        }
+        Err(_) => EntryKind::Symlink,
+    }
 }
 
 async fn is_text_file(sftp: &SftpSession, path: &str) -> bool {
@@ -86,7 +109,7 @@ pub async fn list_directory(
         }
 
         let stat = entry.metadata();
-        let kind = perm_to_kind(stat.permissions);
+        let raw_kind = perm_to_kind(stat.permissions);
         
         // 拼接成全路径：处理好 path 末尾的斜杠
         let full_path = if path.ends_with('/') {
@@ -95,6 +118,7 @@ pub async fn list_directory(
             format!("{}/{}", path, name)
         };
         
+        let kind = resolve_entry_kind(&sftp, &full_path, raw_kind.clone()).await;
         let size_val = stat.size;
         let is_text = matches!(kind, EntryKind::File)
             && if is_probably_text_file(&full_path) {
@@ -112,7 +136,9 @@ pub async fn list_directory(
             name,
             path: full_path,
             kind,
+            is_symlink: raw_kind == EntryKind::Symlink,
             is_text,
+            mode: stat.permissions.map(|perm| perm & 0o7777),
             size: size_val,
         });
     }
@@ -230,6 +256,203 @@ pub async fn download_file(
             });
             last_emitted = transferred;
         }
+    }
+
+    Ok(())
+}
+
+pub async fn rename_entry(
+    state: &AppState,
+    session_id: String,
+    old_path: String,
+    new_path: String,
+) -> AppResult<()> {
+    let conn = get_conn(state, &session_id)?;
+
+    let mut handle = conn.handle.lock().await;
+    let channel = handle.channel_open_session().await?;
+    channel.request_subsystem(true, "sftp").await?;
+    let sftp = SftpSession::new(channel.into_stream()).await?;
+    drop(handle);
+
+    sftp.rename(&old_path, &new_path).await?;
+    Ok(())
+}
+
+async fn exec_remote_command(state: &AppState, session_id: String, command: String) -> AppResult<()> {
+    let conn = get_conn(state, &session_id)?;
+    let handle = conn.handle.lock().await;
+    let mut channel = handle.channel_open_session().await?;
+    drop(handle);
+
+    channel.exec(true, command.clone()).await?;
+
+    let mut stderr = String::new();
+    let mut exit_code = None;
+
+    while let Some(message) = channel.wait().await {
+        match message {
+            ChannelMsg::ExitStatus { exit_status } => {
+                exit_code = Some(exit_status);
+            }
+            ChannelMsg::ExtendedData { data, .. } => {
+                stderr.push_str(&String::from_utf8_lossy(&data));
+            }
+            ChannelMsg::Close | ChannelMsg::Eof => break,
+            _ => {}
+        }
+    }
+
+    if exit_code.unwrap_or_default() == 0 {
+        Ok(())
+    } else {
+        let message = if stderr.trim().is_empty() {
+            format!("remote command failed: {command}")
+        } else {
+            stderr.trim().to_string()
+        };
+        Err(AppError::Message(message))
+    }
+}
+
+pub async fn chmod_entry(
+    state: &AppState,
+    session_id: String,
+    path: String,
+    mode: String,
+) -> AppResult<()> {
+    let command = format!("chmod {} {}", mode, shell_escape(&path));
+    exec_remote_command(state, session_id, command).await
+}
+
+pub async fn read_text_file(
+    state: &AppState,
+    session_id: String,
+    path: String,
+) -> AppResult<String> {
+    let conn = get_conn(state, &session_id)?;
+
+    let mut handle = conn.handle.lock().await;
+    let channel = handle.channel_open_session().await?;
+    channel.request_subsystem(true, "sftp").await?;
+    let sftp = SftpSession::new(channel.into_stream()).await?;
+    drop(handle);
+
+    let mut remote_file = sftp.open(&path).await?;
+    let mut buffer = Vec::new();
+    remote_file.read_to_end(&mut buffer).await?;
+    Ok(String::from_utf8(buffer)?)
+}
+
+pub async fn write_text_file(
+    state: &AppState,
+    session_id: String,
+    path: String,
+    content: String,
+) -> AppResult<()> {
+    let conn = get_conn(state, &session_id)?;
+
+    let mut handle = conn.handle.lock().await;
+    let channel = handle.channel_open_session().await?;
+    channel.request_subsystem(true, "sftp").await?;
+    let sftp = SftpSession::new(channel.into_stream()).await?;
+    drop(handle);
+
+    let mut remote_file = sftp.create(path).await?;
+    remote_file.write_all(content.as_bytes()).await?;
+    remote_file.shutdown().await?;
+    Ok(())
+}
+
+pub async fn create_file(
+    state: &AppState,
+    session_id: String,
+    path: String,
+) -> AppResult<()> {
+    let conn = get_conn(state, &session_id)?;
+
+    let mut handle = conn.handle.lock().await;
+    let channel = handle.channel_open_session().await?;
+    channel.request_subsystem(true, "sftp").await?;
+    let sftp = SftpSession::new(channel.into_stream()).await?;
+    drop(handle);
+
+    let mut remote_file = sftp.create(path).await?;
+    remote_file.shutdown().await?;
+    Ok(())
+}
+
+pub async fn create_dir(
+    state: &AppState,
+    session_id: String,
+    path: String,
+) -> AppResult<()> {
+    let conn = get_conn(state, &session_id)?;
+
+    let mut handle = conn.handle.lock().await;
+    let channel = handle.channel_open_session().await?;
+    channel.request_subsystem(true, "sftp").await?;
+    let sftp = SftpSession::new(channel.into_stream()).await?;
+    drop(handle);
+
+    sftp.create_dir(path).await?;
+    Ok(())
+}
+
+async fn remove_dir_recursive(sftp: &SftpSession, root_path: &str) -> AppResult<()> {
+    let mut stack = vec![(root_path.to_string(), false)];
+
+    while let Some((path, visited)) = stack.pop() {
+        if visited {
+            sftp.remove_dir(&path).await?;
+            continue;
+        }
+
+        stack.push((path.clone(), true));
+
+        for entry in sftp.read_dir(&path).await? {
+            let name = entry.file_name().to_string();
+            if name.is_empty() || name == "." || name == ".." {
+                continue;
+            }
+
+            let child_path = if path.ends_with('/') {
+                format!("{}{}", path, name)
+            } else {
+                format!("{}/{}", path, name)
+            };
+
+            match perm_to_kind(entry.metadata().permissions) {
+                EntryKind::Dir => stack.push((child_path, false)),
+                _ => {
+                    sftp.remove_file(&child_path).await?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn delete_entry(
+    state: &AppState,
+    session_id: String,
+    path: String,
+    kind: EntryKind,
+    is_symlink: bool,
+) -> AppResult<()> {
+    let conn = get_conn(state, &session_id)?;
+
+    let mut handle = conn.handle.lock().await;
+    let channel = handle.channel_open_session().await?;
+    channel.request_subsystem(true, "sftp").await?;
+    let sftp = SftpSession::new(channel.into_stream()).await?;
+    drop(handle);
+
+    match (kind, is_symlink) {
+        (_, true) => sftp.remove_file(&path).await?,
+        (EntryKind::Dir, false) => remove_dir_recursive(&sftp, &path).await?,
+        _ => sftp.remove_file(&path).await?,
     }
 
     Ok(())

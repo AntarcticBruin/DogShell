@@ -44,3 +44,9 @@ impl From<russh_sftp::client::error::Error> for AppError {
         Self::Message(value.to_string())
     }
 }
+
+impl From<std::string::FromUtf8Error> for AppError {
+    fn from(value: std::string::FromUtf8Error) -> Self {
+        Self::Message(value.to_string())
+    }
+}

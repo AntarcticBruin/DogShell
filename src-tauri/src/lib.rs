@@ -20,6 +20,13 @@ pub fn run() {
             ssh::resize_terminal,
             ssh::upload_file,
             ssh::download_file,
+            ssh::rename_entry,
+            ssh::delete_entry,
+            ssh::read_text_file,
+            ssh::write_text_file,
+            ssh::create_file,
+            ssh::create_dir,
+            ssh::chmod_entry,
             window::show_main_window,
             window::default_ssh_key_dir
         ]);

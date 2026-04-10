@@ -152,3 +152,99 @@ pub async fn download_file(
         .await
         .map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub async fn rename_entry(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    old_path: String,
+    new_path: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    files::rename_entry(state.inner(), session_id, old_path, new_path)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_entry(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    kind: EntryKind,
+    is_symlink: bool,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    files::delete_entry(state.inner(), session_id, path, kind, is_symlink)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn read_text_file(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    files::read_text_file(state.inner(), session_id, path)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn write_text_file(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    content: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    files::write_text_file(state.inner(), session_id, path, content)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn create_file(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    files::create_file(state.inner(), session_id, path)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn create_dir(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    files::create_dir(state.inner(), session_id, path)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn chmod_entry(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    mode: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    files::chmod_entry(state.inner(), session_id, path, mode)
+        .await
+        .map_err(|error| error.to_string())
+}

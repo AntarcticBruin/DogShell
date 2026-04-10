@@ -38,7 +38,9 @@ pub struct DirEntry {
     pub name: String,
     pub path: String,
     pub kind: EntryKind,
+    pub is_symlink: bool,
     pub is_text: bool,
+    pub mode: Option<u32>,
     pub size: Option<u64>,
 }
 

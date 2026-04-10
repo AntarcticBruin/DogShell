@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { DirEntry, FavoriteItem } from "../../types/app";
 
 defineProps<{
@@ -23,6 +24,12 @@ const emit = defineEmits<{
   (event: "open-favorite", item: FavoriteItem): void;
   (event: "toggle-favorite", entry: DirEntry): void;
   (event: "download-file", entry: DirEntry): void;
+  (event: "edit-entry", entry: DirEntry): void;
+  (event: "rename-entry", entry: DirEntry): void;
+  (event: "change-mode", entry: DirEntry): void;
+  (event: "delete-entry", entry: DirEntry): void;
+  (event: "create-file"): void;
+  (event: "create-dir"): void;
   (event: "cd-terminal", path: string): void;
 }>();
 
@@ -30,10 +37,111 @@ const asFavoriteEntry = (item: FavoriteItem): DirEntry => ({
   name: item.name,
   path: item.path,
   kind: item.kind,
+  is_symlink: item.is_symlink ?? false,
   is_text: item.kind === "file",
 });
 
 const isDraggingOver = defineModel<boolean>("isDraggingOver", { default: false });
+
+const contextMenu = ref<{
+  entry: DirEntry | null;
+  x: number;
+  y: number;
+} | null>(null);
+
+const CONTEXT_MENU_WIDTH = 168;
+const CONTEXT_MENU_ITEM_HEIGHT = 36;
+const CONTEXT_MENU_PADDING = 12;
+
+function getContextMenuHeight(entry: DirEntry | null) {
+  const itemCount = entry ? (entry.kind === "file" && entry.is_text ? 4 : 3) : 2;
+  return itemCount * CONTEXT_MENU_ITEM_HEIGHT + CONTEXT_MENU_PADDING;
+}
+
+function positionContextMenu(x: number, y: number, entry: DirEntry | null) {
+  const menuHeight = getContextMenuHeight(entry);
+  const maxX = window.innerWidth - CONTEXT_MENU_WIDTH - 8;
+  const maxY = window.innerHeight - menuHeight - 8;
+
+  return {
+    entry,
+    x: Math.max(8, Math.min(x, maxX)),
+    y: Math.max(8, Math.min(y, maxY)),
+  };
+}
+
+function closeContextMenu() {
+  contextMenu.value = null;
+}
+
+function openContextMenu(event: MouseEvent, entry: DirEntry) {
+  event.preventDefault();
+  event.stopPropagation();
+  contextMenu.value = positionContextMenu(event.clientX, event.clientY, entry);
+}
+
+function openCreateContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  contextMenu.value = positionContextMenu(event.clientX, event.clientY, null);
+}
+
+function openCreateMenuFromButton(event: MouseEvent) {
+  event.stopPropagation();
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  contextMenu.value = positionContextMenu(rect.left, rect.bottom + 6, null);
+}
+
+function handleEdit(entry: DirEntry) {
+  closeContextMenu();
+  emit("edit-entry", entry);
+}
+
+function handleDelete(entry: DirEntry) {
+  closeContextMenu();
+  emit("delete-entry", entry);
+}
+
+function handleRename(entry: DirEntry) {
+  closeContextMenu();
+  emit("rename-entry", entry);
+}
+
+function handleChangeMode(entry: DirEntry) {
+  closeContextMenu();
+  emit("change-mode", entry);
+}
+
+function handleCreateFile() {
+  closeContextMenu();
+  emit("create-file");
+}
+
+function handleCreateDir() {
+  closeContextMenu();
+  emit("create-dir");
+}
+
+function handleGlobalClick() {
+  closeContextMenu();
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    closeContextMenu();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener("click", handleGlobalClick);
+  window.addEventListener("keydown", handleGlobalKeydown);
+  window.addEventListener("blur", handleGlobalClick);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("click", handleGlobalClick);
+  window.removeEventListener("keydown", handleGlobalKeydown);
+  window.removeEventListener("blur", handleGlobalClick);
+});
 </script>
 
 <template>
@@ -84,6 +192,12 @@ const isDraggingOver = defineModel<boolean>("isDraggingOver", { default: false }
             <line x1="12" y1="19" x2="20" y2="19"></line>
           </svg>
         </button>
+        <button class="icon-btn" title="New" @click="openCreateMenuFromButton">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
       </div>
 
       <div v-if="showFavorites" class="favorites-panel">
@@ -99,13 +213,16 @@ const isDraggingOver = defineModel<boolean>("isDraggingOver", { default: false }
             :class="{ selected: selectedFile === item.path }"
             @click="emit('open-favorite', item)"
           >
-            <svg v-if="item.kind === 'dir'" viewBox="0 0 24 24" width="14" height="14" fill="#dcb67a">
-              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#519aba" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-            </svg>
+            <span class="entry-icon">
+              <svg v-if="item.kind === 'dir'" viewBox="0 0 24 24" width="14" height="14" fill="#dcb67a">
+                <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#519aba" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+              </svg>
+              <span v-if="item.is_symlink" class="symlink-badge">↗</span>
+            </span>
             <div class="favorite-meta">
               <span class="file-name">{{ item.name }}</span>
               <span class="favorite-path">{{ item.path }}</span>
@@ -124,21 +241,25 @@ const isDraggingOver = defineModel<boolean>("isDraggingOver", { default: false }
         <div v-else class="favorites-empty">No favorites on this host yet.</div>
       </div>
 
-      <div v-else class="file-list">
+      <div v-else class="file-list" @contextmenu="openCreateContextMenu">
         <div
           v-for="entry in entries"
           :key="entry.path"
           class="file-item"
           :class="{ selected: selectedFile === entry.path }"
           @click="emit('open-entry', entry)"
+          @contextmenu="openContextMenu($event, entry)"
         >
-          <svg v-if="entry.kind === 'dir'" viewBox="0 0 24 24" width="14" height="14" fill="#dcb67a">
-            <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#519aba" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-          </svg>
+          <span class="entry-icon">
+            <svg v-if="entry.kind === 'dir'" viewBox="0 0 24 24" width="14" height="14" fill="#dcb67a">
+              <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"></path>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#519aba" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+            <span v-if="entry.is_symlink" class="symlink-badge">↗</span>
+          </span>
           <span class="file-name">{{ entry.name }}</span>
           
           <button
@@ -178,6 +299,46 @@ const isDraggingOver = defineModel<boolean>("isDraggingOver", { default: false }
           </button>
         </div>
       </div>
+
+      <teleport to="body">
+        <div
+          v-if="contextMenu"
+          class="file-context-menu"
+          :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+          @click.stop
+        >
+          <button
+            v-if="contextMenu.entry && contextMenu.entry.kind === 'file' && contextMenu.entry.is_text"
+            class="file-context-menu-item"
+            @click="handleEdit(contextMenu.entry)"
+          >
+            编辑
+          </button>
+          <button
+            v-if="contextMenu.entry"
+            class="file-context-menu-item"
+            @click="handleRename(contextMenu.entry)"
+          >
+            重命名
+          </button>
+          <button
+            v-if="contextMenu.entry"
+            class="file-context-menu-item"
+            @click="handleChangeMode(contextMenu.entry)"
+          >
+            修改权限
+          </button>
+          <button
+            v-if="contextMenu.entry"
+            class="file-context-menu-item danger"
+            @click="handleDelete(contextMenu.entry)"
+          >
+            删除
+          </button>
+          <button v-if="!contextMenu.entry" class="file-context-menu-item" @click="handleCreateFile">新建文件</button>
+          <button v-if="!contextMenu.entry" class="file-context-menu-item" @click="handleCreateDir">新建文件夹</button>
+        </div>
+      </teleport>
       
       <div v-if="transferProgress" class="transfer-progress">
         <div class="progress-info">

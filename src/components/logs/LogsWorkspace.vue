@@ -34,6 +34,12 @@ const emit = defineEmits<{
   (event: "open-favorite", item: FavoriteItem): void;
   (event: "toggle-favorite", entry: DirEntry): void;
   (event: "download-file", entry: DirEntry): void;
+  (event: "edit-entry", entry: DirEntry): void;
+  (event: "rename-entry", entry: DirEntry): void;
+  (event: "change-mode", entry: DirEntry): void;
+  (event: "delete-entry", entry: DirEntry): void;
+  (event: "create-file"): void;
+  (event: "create-dir"): void;
   (event: "clear"): void;
   (event: "stop"): void;
   (event: "start"): void;
@@ -64,6 +70,12 @@ const emit = defineEmits<{
       @open-favorite="emit('open-favorite', $event)"
       @toggle-favorite="emit('toggle-favorite', $event)"
       @download-file="emit('download-file', $event)"
+      @edit-entry="emit('edit-entry', $event)"
+      @rename-entry="emit('rename-entry', $event)"
+      @change-mode="emit('change-mode', $event)"
+      @delete-entry="emit('delete-entry', $event)"
+      @create-file="emit('create-file')"
+      @create-dir="emit('create-dir')"
       @cd-terminal="emit('cd-terminal', $event)"
     />
 

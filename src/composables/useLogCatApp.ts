@@ -74,6 +74,26 @@ export function useLogCatApp() {
     transferred: number;
     total: number;
   } | null>(null);
+  const isFileEditorOpen = ref(false);
+  const fileEditorName = ref("");
+  const fileEditorPath = ref("");
+  const fileEditorContent = ref("");
+  const isSavingFileEditor = ref(false);
+  const isCreateEntryModalOpen = ref(false);
+  const createEntryKind = ref<"file" | "dir">("file");
+  const createEntryName = ref("");
+  const isCreatingEntry = ref(false);
+  const renameTargetEntry = ref<DirEntry | null>(null);
+  const isRenameModalOpen = ref(false);
+  const renameEntryName = ref("");
+  const isRenamingEntry = ref(false);
+  const chmodTargetEntry = ref<DirEntry | null>(null);
+  const isPermissionModalOpen = ref(false);
+  const chmodMode = ref("");
+  const isChangingMode = ref(false);
+  const deleteTargetEntry = ref<DirEntry | null>(null);
+  const isDeleteConfirmOpen = ref(false);
+  const isDeletingEntry = ref(false);
   const favoritePaths = computed(() => {
     const paths = new Set<string>();
     const hostId = currentConnectedHostId.value;
@@ -123,6 +143,11 @@ export function useLogCatApp() {
     directoryCache.clear();
     latestDirectoryRequestId += 1;
     entries.value = [];
+  }
+
+  function invalidateDirectoryCache() {
+    directoryCache.clear();
+    latestDirectoryRequestId += 1;
   }
 
   const isDraggingOverSidebar = ref(false);
@@ -600,10 +625,9 @@ export function useLogCatApp() {
     if (!sessionId.value || !terminalToken.value) return;
     
     await closeSelectedFile();
-    const escapedPath = path.replace(/'/g, "'\\''");
-    
+
     // We send a space first to try and bypass history in bash/zsh (if HISTCONTROL=ignorespace)
-    await writeTerminal(` cd '${escapedPath}'\n`);
+    await writeTerminal(` cd ${path}\n`);
   }
 
   async function resizeTerminal(cols: number, rows: number) {
@@ -637,6 +661,13 @@ export function useLogCatApp() {
     return index <= 0 ? "/" : normalized.slice(0, index);
   }
 
+  function joinPath(parent: string, name: string) {
+    if (parent === "/") {
+      return `/${name}`;
+    }
+    return `${parent}/${name}`;
+  }
+
   function isFavorite(path: string) {
     return favoritePaths.value.has(path);
   }
@@ -663,6 +694,7 @@ export function useLogCatApp() {
       name: entry.name,
       path: entry.path,
       kind: entry.kind,
+      is_symlink: entry.is_symlink,
     });
   }
 
@@ -784,6 +816,269 @@ export function useLogCatApp() {
     }
   }
 
+  async function openFileEditor(entry: DirEntry) {
+    if (!sessionId.value) return;
+    if (entry.kind !== "file" || !entry.is_text) {
+      errorMsg.value = `File "${entry.name}" is not a text file and cannot be edited.`;
+      return;
+    }
+
+    loading.value = true;
+
+    try {
+      const fileContent = await invoke<string>("read_text_file", {
+        sessionId: sessionId.value,
+        path: entry.path,
+      });
+
+      fileEditorName.value = entry.name;
+      fileEditorPath.value = entry.path;
+      fileEditorContent.value = fileContent;
+      isFileEditorOpen.value = true;
+    } catch (error) {
+      errorMsg.value = `Failed to open file editor: ${error}`;
+    } finally {
+      loading.value = false;
+    }
+  }
+
+  function closeFileEditor() {
+    isFileEditorOpen.value = false;
+    fileEditorName.value = "";
+    fileEditorPath.value = "";
+    fileEditorContent.value = "";
+  }
+
+  function openCreateEntryModal(kind: "file" | "dir") {
+    createEntryKind.value = kind;
+    createEntryName.value = "";
+    isCreateEntryModalOpen.value = true;
+  }
+
+  function closeCreateEntryModal() {
+    isCreateEntryModalOpen.value = false;
+    createEntryName.value = "";
+  }
+
+  function requestRenameEntry(entry: DirEntry) {
+    renameTargetEntry.value = entry;
+    renameEntryName.value = entry.name;
+    isRenameModalOpen.value = true;
+  }
+
+  function closeRenameModal() {
+    isRenameModalOpen.value = false;
+    renameTargetEntry.value = null;
+    renameEntryName.value = "";
+  }
+
+  function requestChangeMode(entry: DirEntry) {
+    chmodTargetEntry.value = entry;
+    chmodMode.value = entry.mode != null ? entry.mode.toString(8).padStart(3, "0") : "";
+    isPermissionModalOpen.value = true;
+  }
+
+  function closePermissionModal() {
+    isPermissionModalOpen.value = false;
+    chmodTargetEntry.value = null;
+    chmodMode.value = "";
+  }
+
+  function requestCreateFile() {
+    openCreateEntryModal("file");
+  }
+
+  function requestCreateDir() {
+    openCreateEntryModal("dir");
+  }
+
+  function requestDeleteEntry(entry: DirEntry) {
+    deleteTargetEntry.value = entry;
+    isDeleteConfirmOpen.value = true;
+  }
+
+  function closeDeleteConfirm() {
+    isDeleteConfirmOpen.value = false;
+    deleteTargetEntry.value = null;
+  }
+
+  async function saveEditedFile() {
+    if (!sessionId.value || !fileEditorPath.value) return;
+
+    const targetPath = fileEditorPath.value;
+    isSavingFileEditor.value = true;
+
+    try {
+      await invoke("write_text_file", {
+        sessionId: sessionId.value,
+        path: fileEditorPath.value,
+        content: fileEditorContent.value,
+      });
+
+      closeFileEditor();
+      invalidateDirectoryCache();
+      await refresh({ force: true });
+
+      if (selectedFile.value === targetPath) {
+        await startTail();
+      }
+    } catch (error) {
+      errorMsg.value = `Failed to save file: ${error}`;
+    } finally {
+      isSavingFileEditor.value = false;
+    }
+  }
+
+  async function confirmRenameEntry() {
+    if (!sessionId.value || !renameTargetEntry.value) return;
+
+    const entry = renameTargetEntry.value;
+    const nextName = renameEntryName.value.trim();
+    if (!nextName || nextName === entry.name) {
+      closeRenameModal();
+      return;
+    }
+
+    if (nextName.includes("/")) {
+      errorMsg.value = "名称不能包含 /";
+      return;
+    }
+
+    isRenamingEntry.value = true;
+
+    try {
+      const newPath = joinPath(dirname(entry.path), nextName);
+      await invoke("rename_entry", {
+        sessionId: sessionId.value,
+        oldPath: entry.path,
+        newPath,
+      });
+
+      favorites.value = favorites.value.map((item) => {
+        if (item.hostId !== currentConnectedHostId.value || item.path !== entry.path) {
+          return item;
+        }
+        return {
+          ...item,
+          name: nextName,
+          path: newPath,
+        };
+      });
+
+      if (selectedFile.value === entry.path) {
+        selectedFile.value = newPath;
+      }
+
+      invalidateDirectoryCache();
+      await refresh({ force: true });
+      closeRenameModal();
+    } catch (error) {
+      errorMsg.value = `Failed to rename entry: ${error}`;
+    } finally {
+      isRenamingEntry.value = false;
+    }
+  }
+
+  async function confirmChangeMode() {
+    if (!sessionId.value || !chmodTargetEntry.value) return;
+
+    const mode = chmodMode.value.trim();
+    if (!/^[0-7]{3,4}$/.test(mode)) {
+      errorMsg.value = "权限必须是三位或四位八进制数字";
+      return;
+    }
+
+    isChangingMode.value = true;
+
+    try {
+      await invoke("chmod_entry", {
+        sessionId: sessionId.value,
+        path: chmodTargetEntry.value.path,
+        mode,
+      });
+      invalidateDirectoryCache();
+      await refresh({ force: true });
+      closePermissionModal();
+    } catch (error) {
+      errorMsg.value = `Failed to change mode: ${error}`;
+    } finally {
+      isChangingMode.value = false;
+    }
+  }
+
+  async function confirmDeleteEntry() {
+    if (!sessionId.value || !deleteTargetEntry.value) return;
+
+    const entry = deleteTargetEntry.value;
+    isDeletingEntry.value = true;
+
+    try {
+      await invoke("delete_entry", {
+        sessionId: sessionId.value,
+        path: entry.path,
+        kind: entry.kind,
+        isSymlink: entry.is_symlink,
+      });
+
+      favorites.value = favorites.value.filter((item) => {
+        if (item.hostId !== currentConnectedHostId.value) {
+          return true;
+        }
+
+        return item.path !== entry.path && !item.path.startsWith(`${entry.path}/`);
+      });
+
+      if (
+        selectedFile.value === entry.path
+        || (entry.kind === "dir" && selectedFile.value?.startsWith(`${entry.path}/`))
+      ) {
+        await closeSelectedFile();
+      }
+
+      invalidateDirectoryCache();
+      await refresh({ force: true });
+      closeDeleteConfirm();
+    } catch (error) {
+      errorMsg.value = `Failed to delete entry: ${error}`;
+    } finally {
+      isDeletingEntry.value = false;
+    }
+  }
+
+  async function confirmCreateEntry() {
+    if (!sessionId.value) return;
+    const kind = createEntryKind.value;
+
+    const label = kind === "file" ? "文件" : "文件夹";
+    const name = createEntryName.value.trim();
+
+    if (!name) {
+      return;
+    }
+
+    if (name.includes("/")) {
+      errorMsg.value = `${label}名称不能包含 /`;
+      return;
+    }
+
+    isCreatingEntry.value = true;
+
+    try {
+      const path = joinPath(currentPath.value, name);
+      await invoke(kind === "file" ? "create_file" : "create_dir", {
+        sessionId: sessionId.value,
+        path,
+      });
+      invalidateDirectoryCache();
+      await refresh({ force: true });
+      closeCreateEntryModal();
+    } catch (error) {
+      errorMsg.value = `Failed to create ${kind}: ${error}`;
+    } finally {
+      isCreatingEntry.value = false;
+    }
+  }
+
   onBeforeUnmount(() => {
     if (unlistenTail) {
       unlistenTail();
@@ -832,6 +1127,26 @@ export function useLogCatApp() {
     terminalViewer,
     isAutoScroll,
     transferProgress,
+    isFileEditorOpen,
+    fileEditorName,
+    fileEditorPath,
+    fileEditorContent,
+    isSavingFileEditor,
+    isCreateEntryModalOpen,
+    createEntryKind,
+    createEntryName,
+    isCreatingEntry,
+    renameTargetEntry,
+    isRenameModalOpen,
+    renameEntryName,
+    isRenamingEntry,
+    chmodTargetEntry,
+    isPermissionModalOpen,
+    chmodMode,
+    isChangingMode,
+    isDeleteConfirmOpen,
+    deleteTargetEntry,
+    isDeletingEntry,
     currentHostFavorites,
     highlightedLines,
     openAddModal,
@@ -861,5 +1176,21 @@ export function useLogCatApp() {
     uploadFiles,
     isDraggingOverSidebar,
     downloadFile,
+    openFileEditor,
+    closeFileEditor,
+    saveEditedFile,
+    requestRenameEntry,
+    closeRenameModal,
+    confirmRenameEntry,
+    requestChangeMode,
+    closePermissionModal,
+    confirmChangeMode,
+    requestDeleteEntry,
+    closeDeleteConfirm,
+    confirmDeleteEntry,
+    requestCreateFile,
+    requestCreateDir,
+    closeCreateEntryModal,
+    confirmCreateEntry,
   };
 }

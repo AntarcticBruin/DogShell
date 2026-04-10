@@ -34,7 +34,9 @@ export type DirEntry = {
   name: string;
   path: string;
   kind: "file" | "dir" | "symlink" | "other";
+  is_symlink: boolean;
   is_text: boolean;
+  mode?: number | null;
   size?: number | null;
 };
 
@@ -45,6 +47,7 @@ export type FavoriteItem = {
   name: string;
   path: string;
   kind: "file" | "dir";
+  is_symlink?: boolean;
 };
 
 export type TailEvent = {
