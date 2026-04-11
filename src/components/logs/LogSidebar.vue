@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { DirEntry, FavoriteItem } from "../../types/app";
 
-defineProps<{
+const props = defineProps<{
   sessionId: string | null;
   showFavorites: boolean;
   currentPath: string;
@@ -91,6 +91,14 @@ function openCreateMenuFromButton(event: MouseEvent) {
   contextMenu.value = positionContextMenu(rect.left, rect.bottom + 6, null);
 }
 
+function handleGoHome() {
+  if (props.showFavorites) {
+    emit("toggle-favorites");
+  }
+  emit("update:currentPath", "/");
+  emit("refresh");
+}
+
 function handleEdit(entry: DirEntry) {
   closeContextMenu();
   emit("edit-entry", entry);
@@ -160,7 +168,12 @@ onBeforeUnmount(() => {
             <path d="M12 2.75l2.86 5.8 6.4.93-4.63 4.51 1.09 6.37L12 17.36l-5.72 3 1.1-6.37L2.75 9.48l6.39-.93L12 2.75z"></path>
           </svg>
         </button>
-        <button v-if="sessionId" class="btn btn-sm btn-danger" @click="emit('disconnect')">Disconnect</button>
+        <button v-if="sessionId" class="icon-btn sidebar-create-btn" title="Create New" @click="openCreateMenuFromButton">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -175,6 +188,12 @@ onBeforeUnmount(() => {
       :class="{ 'dragging-over': isDraggingOver }"
     >
       <div class="path-bar">
+        <button class="icon-btn" @click="handleGoHome" title="Go Home">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 10.5L12 3l9 7.5"></path>
+            <path d="M5 10v10h14V10"></path>
+          </svg>
+        </button>
         <button class="icon-btn" @click="emit('up')" title="Go Up">
           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2">
             <polyline points="15 18 9 12 15 6"></polyline>
@@ -190,12 +209,6 @@ onBeforeUnmount(() => {
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="4 17 10 11 4 5"></polyline>
             <line x1="12" y1="19" x2="20" y2="19"></line>
-          </svg>
-        </button>
-        <button class="icon-btn" title="Create New" @click="openCreateMenuFromButton">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M12 5v14"></path>
-            <path d="M5 12h14"></path>
           </svg>
         </button>
       </div>
