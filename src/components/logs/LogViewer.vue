@@ -298,7 +298,11 @@ watch(
 );
 
 watch(
-  () => [props.sessionId, activeTerminalTabId.value, props.selectedFile] as const,
+  () => {
+    const activeTabId = activeTerminalTabId.value;
+    const activeTab = activeTabId ? terminalTabs.value.find(t => t.id === activeTabId) : undefined;
+    return [props.sessionId, activeTabId, props.selectedFile, activeTab?.token] as const;
+  },
   ([sessionId, activeTabId, selectedFile]) => {
     if (!activeTabId) return;
     const inst = terminalInstances.get(activeTabId);
@@ -312,7 +316,9 @@ watch(
       cursor: isInteractive ? terminalTheme.cursor : "transparent",
     };
 
-    if (!isInteractive) {
+    if (isInteractive) {
+      void nextTick(() => focusTerminal(activeTabId));
+    } else {
       inst.terminal.blur();
     }
   },
@@ -357,9 +363,26 @@ function createTerminal(tabId: string, element: HTMLElement) {
     lastRenderedLength: 0,
   });
 
+  const tab = terminalTabs.value.find(t => t.id === tabId);
+  const isInteractive = Boolean(props.sessionId && tab?.token && !props.selectedFile);
+  terminal.options.cursorBlink = isInteractive;
+  terminal.options.theme = {
+    ...terminalTheme,
+    cursor: isInteractive ? terminalTheme.cursor : "transparent",
+  };
+
+  if (!isInteractive) {
+    terminal.blur();
+  }
+
   syncTerminalOutput();
   if (activeTerminalTabId.value === tabId) {
-    focusTerminal(tabId);
+    if (isInteractive) {
+      void nextTick(() => {
+        focusTerminal(tabId);
+        requestAnimationFrame(() => focusTerminal(tabId));
+      });
+    }
     syncTerminalResize(tabId);
   }
 }
@@ -428,7 +451,11 @@ watch(
 
 watch(
   activeTerminalTabId,
-  (newId) => {
+  (newId, oldId) => {
+    if (oldId) {
+      const oldInst = terminalInstances.get(oldId);
+      oldInst?.terminal.blur();
+    }
     if (newId) {
       void nextTick(() => {
         syncTerminalResize(newId);
