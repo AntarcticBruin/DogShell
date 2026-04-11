@@ -54,6 +54,12 @@ const terminalContextMenu = ref<{
   y: number;
 } | null>(null);
 
+const logContextMenu = ref<{
+  selection: string;
+  x: number;
+  y: number;
+} | null>(null);
+
 const searchQuery = ref("");
 const filterQuery = ref("");
 const showSearch = ref(false);
@@ -119,6 +125,11 @@ function handleKeydown(e: KeyboardEvent) {
   if (terminalContextMenu.value && e.key === "Escape") {
     e.preventDefault();
     terminalContextMenu.value = null;
+    return;
+  }
+  if (logContextMenu.value && e.key === "Escape") {
+    e.preventDefault();
+    logContextMenu.value = null;
     return;
   }
   if (!props.selectedFile) return;
@@ -263,6 +274,7 @@ function closeTerminalContextMenu() {
 
 function handleGlobalClick() {
   closeTerminalContextMenu();
+  logContextMenu.value = null;
 }
 
 async function handleTerminalCopy() {
@@ -314,6 +326,34 @@ async function handleTerminalContextMenu(event: MouseEvent) {
     selection,
     ...pos,
   };
+}
+
+async function handleLogContextMenu(event: MouseEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!props.selectedFile) return;
+
+  const selection = window.getSelection()?.toString() ?? "";
+  if (!selection.trim()) return;
+
+  const pos = positionTerminalContextMenu(event.clientX, event.clientY);
+  logContextMenu.value = {
+    selection,
+    ...pos,
+  };
+}
+
+async function handleLogCopy() {
+  const menu = logContextMenu.value;
+  if (!menu) return;
+  try {
+    await writeText(menu.selection);
+  } catch (error) {
+    console.error("Failed to write clipboard:", error);
+  } finally {
+    logContextMenu.value = null;
+  }
 }
 
 watch(
@@ -680,7 +720,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="selectedFile" ref="localLogViewerRef" class="log-viewer log-viewer-overlay" tabindex="-1">
+      <div v-if="selectedFile" ref="localLogViewerRef" class="log-viewer log-viewer-overlay" tabindex="-1" @contextmenu="handleLogContextMenu">
         <div v-if="content" class="log-lines">
           <div
             v-for="(line, lineIndex) in displayLines"
@@ -700,6 +740,17 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="empty-viewer">Select Start to load this file, or click the file again to close it.</div>
       </div>
+      
+      <teleport to="body">
+        <div
+          v-if="logContextMenu"
+          class="log-context-menu"
+          :style="{ left: `${logContextMenu.x}px`, top: `${logContextMenu.y}px` }"
+          @click.stop
+        >
+          <button class="log-context-menu-item" @click="handleLogCopy">Copy</button>
+        </div>
+      </teleport>
     </div>
   </div>
 </template>
