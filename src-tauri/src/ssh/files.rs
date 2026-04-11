@@ -91,7 +91,7 @@ pub async fn list_directory(
     let conn = get_conn(state, &session_id)?;
 
     // We must acquire the session to open a new channel
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -156,7 +156,7 @@ pub async fn upload_file(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let  handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -211,7 +211,7 @@ pub async fn download_file(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -269,7 +269,7 @@ pub async fn rename_entry(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -332,7 +332,7 @@ pub async fn read_text_file(
 ) -> AppResult<String> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -352,7 +352,7 @@ pub async fn write_text_file(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -371,7 +371,7 @@ pub async fn create_file(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -389,7 +389,7 @@ pub async fn create_dir(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;
@@ -443,7 +443,7 @@ pub async fn delete_entry(
 ) -> AppResult<()> {
     let conn = get_conn(state, &session_id)?;
 
-    let mut handle = conn.handle.lock().await;
+    let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
     channel.request_subsystem(true, "sftp").await?;
     let sftp = SftpSession::new(channel.into_stream()).await?;

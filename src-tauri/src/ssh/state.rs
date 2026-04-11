@@ -1,4 +1,3 @@
-use super::types::ConnectOptions;
 use russh::client::Handle;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -26,7 +25,6 @@ impl AppState {
 
 pub struct SshConn {
     pub handle: AsyncMutex<Handle<super::session::Client>>,
-    pub opts: ConnectOptions,
     pub watchers: StdMutex<HashMap<String, Arc<Watcher>>>,
     pub terminal: AsyncMutex<HashMap<String, Arc<TerminalSession>>>,
 }
@@ -36,7 +34,6 @@ pub struct Watcher {
 }
 
 pub struct TerminalSession {
-    pub token: String,
     pub stop: AtomicBool,
     pub writer: AsyncMutex<russh::ChannelWriteHalf<russh::client::Msg>>,
 }

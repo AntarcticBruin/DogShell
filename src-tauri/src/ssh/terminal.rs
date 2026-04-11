@@ -1,6 +1,6 @@
-use super::error::{AppError, AppResult};
+use super::error::AppResult;
 use super::session::get_conn;
-use super::state::{AppState, SshConn, TerminalSession};
+use super::state::{AppState, TerminalSession};
 use super::types::TerminalEvent;
 use russh::ChannelMsg;
 use std::sync::atomic::Ordering;
@@ -55,7 +55,6 @@ pub async fn start(
     let (mut reader, writer) = channel.split();
     let token = Uuid::new_v4().to_string();
     let terminal = Arc::new(TerminalSession {
-        token: token.clone(),
         stop: std::sync::atomic::AtomicBool::new(false),
         writer: tokio::sync::Mutex::new(writer),
     });

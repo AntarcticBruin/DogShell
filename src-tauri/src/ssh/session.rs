@@ -4,9 +4,7 @@ use super::types::{Auth, ConnectOptions, ConnectResult};
 use russh::client::{Config, Handle, Handler};
 use russh::keys::key::PrivateKeyWithHashAlg;
 use russh::keys::load_secret_key;
-use russh::ChannelMsg;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
@@ -63,7 +61,6 @@ pub async fn establish_for_state(opts: ConnectOptions) -> AppResult<Arc<SshConn>
 
     Ok(Arc::new(SshConn {
         handle: AsyncMutex::new(handle),
-        opts,
         watchers: Mutex::new(HashMap::new()),
         terminal: AsyncMutex::new(HashMap::new()),
     }))
