@@ -8,10 +8,11 @@ import type {
   ConnectOptions,
   DirEntry,
   FavoriteItem,
-  HighlightedLine,
   HostProfile,
+  HostSession,
   TailEvent,
   TerminalEvent,
+  TerminalTab,
   TransferProgressEvent,
 } from "../types/app";
 import { highlightLogLine } from "../utils/logHighlight";
@@ -48,32 +49,65 @@ export function useLogCatApp() {
   const keyPath = ref("");
   const passphrase = ref("");
 
-  const sessionId = ref<string | null>(null);
-  const currentConnectedHostId = ref<string | null>(null);
+  const activeSessionId = ref<string | null>(null);
+  const hostSessions = ref<HostSession[]>([]);
+
+  // Computed properties to access current session's state
+  const currentSession = computed(() => 
+    hostSessions.value.find(s => s.sessionId === activeSessionId.value) || null
+  );
+
+  const sessionId = computed(() => currentSession.value?.sessionId || null);
+  const currentConnectedHostId = computed(() => currentSession.value?.hostId || null);
   const currentConnectingHostId = ref<string | null>(null);
 
-  const entries = ref<DirEntry[]>([]);
-  const currentPath = ref("/");
-  const selectedFile = ref<string | null>(null);
+  const entries = computed({
+    get: () => currentSession.value?.entries || [],
+    set: (val) => { if (currentSession.value) currentSession.value.entries = val; }
+  });
+  const currentPath = computed({
+    get: () => currentSession.value?.currentPath || "/",
+    set: (val) => { if (currentSession.value) currentSession.value.currentPath = val; }
+  });
+  const selectedFile = computed({
+    get: () => currentSession.value?.selectedFile || null,
+    set: (val) => { if (currentSession.value) currentSession.value.selectedFile = val; }
+  });
+  const tailToken = computed({
+    get: () => currentSession.value?.tailToken || null,
+    set: (val) => { if (currentSession.value) currentSession.value.tailToken = val; }
+  });
+  const content = computed({
+    get: () => currentSession.value?.content || "",
+    set: (val) => { if (currentSession.value) currentSession.value.content = val; }
+  });
+  const terminalTabs = computed({
+    get: () => currentSession.value?.terminalTabs || [],
+    set: (val) => { if (currentSession.value) currentSession.value.terminalTabs = val; }
+  });
+  const activeTerminalTabId = computed({
+    get: () => currentSession.value?.activeTerminalTabId || null,
+    set: (val) => { if (currentSession.value) currentSession.value.activeTerminalTabId = val; }
+  });
+  const loading = computed({
+    get: () => currentSession.value?.loading || false,
+    set: (val) => { if (currentSession.value) currentSession.value.loading = val; }
+  });
+  const transferProgress = computed({
+    get: () => currentSession.value?.transferProgress || null,
+    set: (val) => { if (currentSession.value) currentSession.value.transferProgress = val; }
+  });
+  const highlightedLines = computed({
+    get: () => currentSession.value?.highlightedLines || [],
+    set: (val) => { if (currentSession.value) currentSession.value.highlightedLines = val; }
+  });
   const favorites = ref<FavoriteItem[]>([]);
   const showFavorites = ref(false);
-  const tailToken = ref<string | null>(null);
-  const content = ref("");
-  const terminalToken = ref<string | null>(null);
-  const terminalContent = ref("");
-  const loading = ref(false);
   const isConnecting = ref(false);
   const errorMsg = ref("");
 
   const logViewer = ref<HTMLElement | null>(null);
-  const terminalViewer = ref<HTMLElement | null>(null);
   const isAutoScroll = ref(true);
-  
-  const transferProgress = ref<{
-    fileName: string;
-    transferred: number;
-    total: number;
-  } | null>(null);
   const isFileEditorOpen = ref(false);
   const fileEditorName = ref("");
   const fileEditorPath = ref("");
@@ -109,18 +143,15 @@ export function useLogCatApp() {
 
     return paths;
   });
-  const highlightedLines = ref<HighlightedLine[]>([]);
   const MAX_LINES = 5000;
   const directoryCache = new Map<string, DirEntry[]>();
   let latestDirectoryRequestId = 0;
-  let hasPendingHighlightedLine = false;
-  let pendingHighlightedChunk = "";
+  const pendingHighlightedChunks = new Map<string, string>();
 
   let unlistenTail: (() => void) | null = null;
   let unlistenTerminal: (() => void) | null = null;
   let unlistenDragDrop: (() => void) | null = null;
   let unlistenTransferProgress: (() => void) | null = null;
-  let isStartingTerminal = false;
   let ignoreNextPromptLine = false;
 
   function visibleEntries(list: DirEntry[]) {
@@ -199,50 +230,48 @@ export function useLogCatApp() {
     favorites.value.filter((item) => item.hostId === currentConnectedHostId.value),
   );
 
-  function resetHighlightedLines() {
-    highlightedLines.value = [];
-    hasPendingHighlightedLine = false;
-    pendingHighlightedChunk = "";
+  function resetHighlightedLines(session: HostSession) {
+    session.highlightedLines = [];
+    pendingHighlightedChunks.set(session.sessionId, "");
   }
 
-  function appendHighlightedChunk(chunk: string) {
-    const merged = pendingHighlightedChunk + chunk;
+  function appendHighlightedChunk(session: HostSession, chunk: string) {
+    const pendingChunk = pendingHighlightedChunks.get(session.sessionId) || "";
+    const merged = pendingChunk + chunk;
     const parts = merged.split("\n");
     const endsWithNewline = merged.endsWith("\n");
     const nextPending = endsWithNewline ? null : parts.pop() ?? "";
 
-    if (hasPendingHighlightedLine) {
-      highlightedLines.value.pop();
-      hasPendingHighlightedLine = false;
+    if (pendingChunk !== "" && !pendingChunk.endsWith("\n") && session.highlightedLines.length > 0) {
+      session.highlightedLines.pop();
     }
 
     const newLines = parts.map(highlightLogLine);
-    highlightedLines.value.push(...newLines);
+    session.highlightedLines.push(...newLines);
 
     if (nextPending !== null) {
-      pendingHighlightedChunk = nextPending;
-      highlightedLines.value.push(highlightLogLine(nextPending));
-      hasPendingHighlightedLine = true;
+      pendingHighlightedChunks.set(session.sessionId, nextPending);
+      session.highlightedLines.push(highlightLogLine(nextPending));
     } else {
-      pendingHighlightedChunk = "";
+      pendingHighlightedChunks.set(session.sessionId, "");
     }
 
     // 维持最大行数限制，防止内存暴涨
-    if (highlightedLines.value.length > MAX_LINES) {
-      highlightedLines.value.splice(0, highlightedLines.value.length - MAX_LINES);
+    if (session.highlightedLines.length > MAX_LINES) {
+      session.highlightedLines.splice(0, session.highlightedLines.length - MAX_LINES);
     }
   }
 
-  function appendTerminalChunk(chunk: string) {
+  function appendTerminalChunk(session: HostSession, tabId: string, chunk: string) {
     if (ignoreNextPromptLine) {
       if (chunk.includes('\r\n') || chunk.includes('\n')) {
         ignoreNextPromptLine = false;
-        // Optional: filter out the cd command from the chunk if needed,
-        // but for simplicity, we might just need to rely on clearing the line 
-        // using ANSI escape codes in the cd command itself.
       }
     }
-    terminalContent.value += chunk;
+    const tab = session.terminalTabs.find(t => t.id === tabId);
+    if (tab) {
+      tab.content += chunk;
+    }
   }
 
   function resetHostForm() {
@@ -356,14 +385,25 @@ export function useLogCatApp() {
 
       const result = await invoke<{ session_id: string }>("connect_ssh", { opts: options });
 
-      if (sessionId.value) {
-        await disconnect();
-      }
-
-      sessionId.value = result.session_id;
-      currentConnectedHostId.value = profile.id;
-      currentPath.value = "/";
-      showFavorites.value = false;
+      const newSession: HostSession = {
+        sessionId: result.session_id,
+        hostId: profile.id,
+        profile,
+        currentPath: "/",
+        entries: [],
+        selectedFile: null,
+        tailToken: null,
+        content: "",
+        highlightedLines: [],
+        terminalTabs: [],
+        activeTerminalTabId: null,
+        transferProgress: null,
+        loading: false,
+      };
+      
+      hostSessions.value.push(newSession);
+      activeSessionId.value = result.session_id;
+      
       clearDirectoryState();
       await ensureTailListener();
       await ensureTerminalListener();
@@ -380,36 +420,43 @@ export function useLogCatApp() {
     }
   }
 
-  async function disconnect() {
-    if (!sessionId.value) return;
+  async function disconnect(targetSessionId: string = sessionId.value!) {
+    if (!targetSessionId) return;
 
-    await stopTail();
-    await stopTerminal();
+    const sessionIndex = hostSessions.value.findIndex(s => s.sessionId === targetSessionId);
+    if (sessionIndex === -1) return;
+    
+    const session = hostSessions.value[sessionIndex];
+
+    await stopTail(targetSessionId);
+    await Promise.all(session.terminalTabs.map(tab => stopTerminal(tab.id, targetSessionId)));
+    
     try {
-      await invoke("disconnect_ssh", { sessionId: sessionId.value });
+      await invoke("disconnect_ssh", { sessionId: targetSessionId });
     } catch (error) {
       console.error(error);
     }
 
-    sessionId.value = null;
-    currentConnectedHostId.value = null;
-    clearDirectoryState();
-    content.value = "";
-    terminalContent.value = "";
-    isStartingTerminal = false;
-    resetHighlightedLines();
-    selectedFile.value = null;
-    showFavorites.value = false;
+    hostSessions.value.splice(sessionIndex, 1);
+    
+    if (activeSessionId.value === targetSessionId) {
+      activeSessionId.value = hostSessions.value.length > 0 ? hostSessions.value[hostSessions.value.length - 1].sessionId : null;
+    }
+    
+    if (hostSessions.value.length === 0) {
+      activeTab.value = "hosts";
+    }
   }
 
   async function ensureTailListener() {
     if (unlistenTail) return;
 
     unlistenTail = await listen<TailEvent>("tail_data", (event) => {
-      if (event.payload?.token === tailToken.value) {
-        content.value += event.payload.chunk;
-        appendHighlightedChunk(event.payload.chunk);
-        if (isAutoScroll.value) {
+      const session = hostSessions.value.find(s => s.sessionId === event.payload.session_id);
+      if (session && event.payload?.token === session.tailToken) {
+        session.content += event.payload.chunk;
+        appendHighlightedChunk(session, event.payload.chunk);
+        if (isAutoScroll.value && activeSessionId.value === session.sessionId) {
           scrollToBottom();
         }
       }
@@ -420,12 +467,12 @@ export function useLogCatApp() {
     if (unlistenTerminal) return;
 
     unlistenTerminal = await listen<TerminalEvent>("terminal_data", (event) => {
-      if (!event.payload || event.payload.session_id !== sessionId.value) {
-        return;
-      }
+      const session = hostSessions.value.find(s => s.sessionId === event.payload.session_id);
+      if (!session) return;
 
-      if (event.payload.token === terminalToken.value || (isStartingTerminal && !terminalToken.value)) {
-        appendTerminalChunk(event.payload.chunk);
+      const tab = session.terminalTabs.find(t => t.token === event.payload.token || (t.isStarting && !t.token));
+      if (tab) {
+        appendTerminalChunk(session, tab.id, event.payload.chunk);
       }
     });
   }
@@ -434,11 +481,10 @@ export function useLogCatApp() {
     if (unlistenTransferProgress) return;
 
     unlistenTransferProgress = await listen<TransferProgressEvent>("transfer_progress", (event) => {
-      if (!event.payload || event.payload.session_id !== sessionId.value) {
-        return;
-      }
+      const session = hostSessions.value.find(s => s.sessionId === event.payload.session_id);
+      if (!session) return;
 
-      transferProgress.value = {
+      session.transferProgress = {
         fileName: event.payload.file_name,
         transferred: event.payload.transferred,
         total: event.payload.total,
@@ -446,8 +492,8 @@ export function useLogCatApp() {
 
       if (event.payload.total > 0 && event.payload.transferred >= event.payload.total) {
         setTimeout(() => {
-          if (transferProgress.value?.fileName === event.payload.file_name) {
-            transferProgress.value = null;
+          if (session.transferProgress?.fileName === event.payload.file_name) {
+            session.transferProgress = null;
           }
         }, 1500);
       }
@@ -513,13 +559,16 @@ export function useLogCatApp() {
   }
 
   async function closeSelectedFile() {
+    if (!currentSession.value) return;
     await stopTail();
-    selectedFile.value = null;
-    content.value = "";
-    resetHighlightedLines();
+    currentSession.value.selectedFile = null;
+    currentSession.value.content = "";
+    resetHighlightedLines(currentSession.value);
   }
 
   async function enter(entry: DirEntry) {
+    if (!currentSession.value) return;
+    
     if (entry.kind === "dir") {
       openDirectory(entry.path);
       return;
@@ -533,25 +582,25 @@ export function useLogCatApp() {
       
       showFavorites.value = false;
 
-      if (selectedFile.value === entry.path) {
+      if (currentSession.value.selectedFile === entry.path) {
         await closeSelectedFile();
         return;
       }
 
-      selectedFile.value = entry.path;
+      currentSession.value.selectedFile = entry.path;
       await startTail();
     }
   }
 
   async function startTail() {
-    if (!sessionId.value || !selectedFile.value) return;
+    if (!sessionId.value || !selectedFile.value || !currentSession.value) return;
 
     await stopTail();
-    content.value = "";
-    resetHighlightedLines();
+    currentSession.value.content = "";
+    resetHighlightedLines(currentSession.value);
 
     try {
-      tailToken.value = await invoke<string>("start_tail", {
+      currentSession.value.tailToken = await invoke<string>("start_tail", {
         sessionId: sessionId.value,
         path: selectedFile.value,
         lines: 200,
@@ -561,59 +610,87 @@ export function useLogCatApp() {
     }
   }
 
-  async function stopTail() {
-    if (!sessionId.value || !tailToken.value) return;
+  async function stopTail(targetSessionId: string = sessionId.value!) {
+    if (!targetSessionId) return;
+    
+    const session = hostSessions.value.find(s => s.sessionId === targetSessionId);
+    if (!session || !session.tailToken) return;
 
     try {
-      await invoke("stop_tail", { sessionId: sessionId.value, token: tailToken.value });
+      await invoke("stop_tail", { sessionId: targetSessionId, token: session.tailToken });
     } catch (error) {
       console.error(error);
     }
 
-    tailToken.value = null;
+    session.tailToken = null;
   }
 
   async function startTerminal(cols?: number, rows?: number) {
-    if (!sessionId.value) return;
+    if (!sessionId.value || !currentSession.value) return;
 
-    await stopTerminal();
-    terminalContent.value = "";
-    terminalToken.value = null;
-    isStartingTerminal = true;
+    const id = crypto.randomUUID();
+    const newTab: TerminalTab = {
+      id,
+      token: null,
+      content: "",
+      name: `Terminal ${currentSession.value.terminalTabs.length + 1}`,
+      isStarting: true,
+    };
+    currentSession.value.terminalTabs.push(newTab);
+    currentSession.value.activeTerminalTabId = id;
 
     try {
-      terminalToken.value = await invoke<string>("start_terminal", {
+      const token = await invoke<string>("start_terminal", {
         sessionId: sessionId.value,
         cols,
         rows,
       });
+      const tab = currentSession.value.terminalTabs.find(t => t.id === id);
+      if (tab) {
+        tab.token = token;
+      }
     } catch (error) {
       errorMsg.value = `Failed to start terminal: ${error}`;
     } finally {
-      isStartingTerminal = false;
+      const tab = currentSession.value.terminalTabs.find(t => t.id === id);
+      if (tab) {
+        tab.isStarting = false;
+      }
     }
   }
 
-  async function stopTerminal() {
-    if (!sessionId.value || !terminalToken.value) return;
+  async function stopTerminal(tabId: string, targetSessionId: string = sessionId.value!) {
+    if (!targetSessionId) return;
+    const session = hostSessions.value.find(s => s.sessionId === targetSessionId);
+    if (!session) return;
 
-    try {
-      await invoke("stop_terminal", { sessionId: sessionId.value, token: terminalToken.value });
-    } catch (error) {
-      console.error(error);
+    const tabIndex = session.terminalTabs.findIndex(t => t.id === tabId);
+    if (tabIndex === -1) return;
+
+    const tab = session.terminalTabs[tabIndex];
+    if (tab.token) {
+      try {
+        await invoke("stop_terminal", { sessionId: targetSessionId, token: tab.token });
+      } catch (error) {
+        console.error(error);
+      }
     }
 
-    terminalToken.value = null;
-    isStartingTerminal = false;
+    session.terminalTabs.splice(tabIndex, 1);
+    if (session.activeTerminalTabId === tabId) {
+      session.activeTerminalTabId = session.terminalTabs.length > 0 ? session.terminalTabs[session.terminalTabs.length - 1].id : null;
+    }
   }
 
-  async function writeTerminal(data: string) {
-    if (!sessionId.value || !terminalToken.value || !data) return;
+  async function writeTerminal(tabId: string, data: string) {
+    if (!sessionId.value || !data || !currentSession.value) return;
+    const tab = currentSession.value.terminalTabs.find(t => t.id === tabId);
+    if (!tab || !tab.token) return;
 
     try {
       await invoke("write_terminal", {
         sessionId: sessionId.value,
-        token: terminalToken.value,
+        token: tab.token,
         data,
       });
     } catch (error) {
@@ -621,22 +698,24 @@ export function useLogCatApp() {
     }
   }
 
-  async function cdInTerminal(path: string) {
-    if (!sessionId.value || !terminalToken.value) return;
+  async function cdInTerminal(tabId: string, path: string) {
+    if (!sessionId.value || !currentSession.value) return;
+    const tab = currentSession.value.terminalTabs.find(t => t.id === tabId);
+    if (!tab || !tab.token) return;
     
     await closeSelectedFile();
-
-    // We send a space first to try and bypass history in bash/zsh (if HISTCONTROL=ignorespace)
-    await writeTerminal(` cd ${path}\n`);
+    await writeTerminal(tabId, ` cd ${path}\n`);
   }
 
-  async function resizeTerminal(cols: number, rows: number) {
-    if (!sessionId.value || !terminalToken.value) return;
+  async function resizeTerminal(tabId: string, cols: number, rows: number) {
+    if (!sessionId.value || !currentSession.value) return;
+    const tab = currentSession.value.terminalTabs.find(t => t.id === tabId);
+    if (!tab || !tab.token) return;
 
     try {
       await invoke("resize_terminal", {
         sessionId: sessionId.value,
-        token: terminalToken.value,
+        token: tab.token,
         cols,
         rows,
       });
@@ -662,9 +741,7 @@ export function useLogCatApp() {
   }
 
   function joinPath(parent: string, name: string) {
-    if (parent === "/") {
-      return `/${name}`;
-    }
+    if (parent === "/") return `/${name}`;
     return `${parent}/${name}`;
   }
 
@@ -741,8 +818,9 @@ export function useLogCatApp() {
   }
 
   function clearContent() {
-    content.value = "";
-    resetHighlightedLines();
+    if (!currentSession.value) return;
+    currentSession.value.content = "";
+    resetHighlightedLines(currentSession.value);
   }
 
   async function pickPrivateKeyPath() {
@@ -1108,6 +1186,8 @@ export function useLogCatApp() {
     password,
     keyPath,
     passphrase,
+    activeSessionId,
+    hostSessions,
     sessionId,
     currentConnectedHostId,
     currentConnectingHostId,
@@ -1117,14 +1197,13 @@ export function useLogCatApp() {
     favorites,
     showFavorites,
     tailToken,
-    terminalToken,
     content,
-    terminalContent,
+    terminalTabs,
+    activeTerminalTabId,
     loading,
     isConnecting,
     errorMsg,
     logViewer,
-    terminalViewer,
     isAutoScroll,
     transferProgress,
     isFileEditorOpen,

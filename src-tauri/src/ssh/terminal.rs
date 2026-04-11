@@ -20,18 +20,8 @@ fn emit_terminal_chunk(app: &AppHandle, token: &str, session_id: &str, chunk: St
 
 async fn cleanup_terminal(state: &AppState, session_id: &str, token: &str) {
     if let Some(conn) = state.get_session(session_id) {
-        let mut terminal = conn.terminal.lock().await;
-        if terminal.as_ref().is_some_and(|current| current.token == token) {
-            terminal.take();
-        }
-    }
-}
-
-async fn stop_active_terminal(conn: &Arc<SshConn>) {
-    if let Some(terminal) = conn.terminal.lock().await.take() {
-        terminal.stop.store(true, Ordering::SeqCst);
-        let writer = terminal.writer.lock().await;
-        let _ = writer.close().await;
+        let mut terminals = conn.terminal.lock().await;
+        terminals.remove(token);
     }
 }
 
@@ -43,7 +33,6 @@ pub async fn start(
     rows: Option<u32>,
 ) -> AppResult<String> {
     let conn = get_conn(state, &session_id)?;
-    stop_active_terminal(&conn).await;
 
     let handle = conn.handle.lock().await;
     let channel = handle.channel_open_session().await?;
@@ -71,7 +60,7 @@ pub async fn start(
         writer: tokio::sync::Mutex::new(writer),
     });
 
-    *conn.terminal.lock().await = Some(terminal.clone());
+    conn.terminal.lock().await.insert(token.clone(), terminal.clone());
 
     let thread_token = token.clone();
     let thread_session_id = session_id.clone();
@@ -139,14 +128,13 @@ pub async fn start(
 
 pub async fn stop(state: State<'_, AppState>, session_id: String, token: String) -> AppResult<()> {
     let conn = get_conn(state.inner(), &session_id)?;
-    let terminal = conn.terminal.lock().await.clone();
+    let terminal = {
+        let terminals = conn.terminal.lock().await;
+        terminals.get(&token).cloned()
+    };
     let Some(terminal) = terminal else {
         return Ok(());
     };
-
-    if terminal.token != token {
-        return Err(AppError::InvalidSession);
-    }
 
     terminal.stop.store(true, Ordering::SeqCst);
     let writer = terminal.writer.lock().await;
@@ -161,14 +149,13 @@ pub async fn write(
     data: String,
 ) -> AppResult<()> {
     let conn = get_conn(state.inner(), &session_id)?;
-    let terminal = conn.terminal.lock().await.clone();
+    let terminal = {
+        let terminals = conn.terminal.lock().await;
+        terminals.get(&token).cloned()
+    };
     let Some(terminal) = terminal else {
         return Ok(());
     };
-
-    if terminal.token != token {
-        return Err(AppError::InvalidSession);
-    }
 
     let writer = terminal.writer.lock().await;
     writer.data(data.as_bytes()).await?;
@@ -183,14 +170,13 @@ pub async fn resize(
     rows: u32,
 ) -> AppResult<()> {
     let conn = get_conn(state.inner(), &session_id)?;
-    let terminal = conn.terminal.lock().await.clone();
+    let terminal = {
+        let terminals = conn.terminal.lock().await;
+        terminals.get(&token).cloned()
+    };
     let Some(terminal) = terminal else {
         return Ok(());
     };
-
-    if terminal.token != token {
-        return Err(AppError::InvalidSession);
-    }
 
     let writer = terminal.writer.lock().await;
     writer.window_change(cols.max(20), rows.max(8), 0, 0).await?;

@@ -34,10 +34,13 @@ pub async fn disconnect_ssh(app: tauri::AppHandle, session_id: String) -> Result
                 watcher.stop.store(true, Ordering::SeqCst);
             }
         }
-        if let Some(terminal) = conn.terminal.lock().await.take() {
-            terminal.stop.store(true, Ordering::SeqCst);
-            let writer = terminal.writer.lock().await;
-            let _ = writer.close().await;
+        {
+            let mut terminals = conn.terminal.lock().await;
+            for (_, terminal) in terminals.drain() {
+                terminal.stop.store(true, Ordering::SeqCst);
+                let writer = terminal.writer.lock().await;
+                let _ = writer.close().await;
+            }
         }
         let handle = conn.handle.lock().await;
         let _ = handle.disconnect(russh::Disconnect::ByApplication, "bye", "en-US").await;

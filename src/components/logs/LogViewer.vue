@@ -4,20 +4,21 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { ref, computed } from "vue";
 import { nextTick, onBeforeUnmount, onMounted, watch } from "vue";
-import type { HighlightedLine, HighlightSegment } from "../../types/app";
+import type { HighlightedLine, HighlightSegment, HostSessionTab } from "../../types/app";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 
 const content = defineModel<string>("content", { required: true });
-const terminalContent = defineModel<string>("terminalContent", { required: true });
+const activeSessionId = defineModel<string | null>("activeSessionId", { required: true });
+const terminalTabs = defineModel<import("../../types/app").TerminalTab[]>("terminalTabs", { required: true });
+const activeTerminalTabId = defineModel<string | null>("activeTerminalTabId", { required: true });
 const isAutoScroll = defineModel<boolean>("isAutoScroll", { required: true });
 const logViewerRef = defineModel<HTMLElement | null>("logViewerRef", { required: true });
-const terminalViewerRef = defineModel<HTMLElement | null>("terminalViewerRef", { required: true });
 
 const props = defineProps<{
   sessionId: string | null;
+  hostSessionTabs: HostSessionTab[];
   selectedFile: string | null;
   tailToken: string | null;
-  terminalToken: string | null;
   highlightedLines: HighlightedLine[];
 }>();
 
@@ -25,17 +26,25 @@ const emit = defineEmits<{
   (event: "clear"): void;
   (event: "stop"): void;
   (event: "start"): void;
-  (event: "write-terminal", data: string): void;
-  (event: "resize-terminal", payload: { cols: number; rows: number }): void;
+  (event: "write-terminal", tabId: string, data: string): void;
+  (event: "resize-terminal", tabId: string, cols: number, rows: number): void;
+  (event: "start-terminal"): void;
+  (event: "stop-terminal", tabId: string): void;
+  (event: "disconnect-session", sessionId: string): void;
 }>();
 
+type TerminalInstance = {
+  terminal: Terminal;
+  fitAddon: FitAddon;
+  disposeDataHandler: { dispose(): void } | null;
+  lastRenderedLength: number;
+};
+
+const terminalInstances = new Map<string, TerminalInstance>();
 let resizeObserver: ResizeObserver | null = null;
-let terminal: Terminal | null = null;
-let fitAddon: FitAddon | null = null;
-let lastRenderedTerminalLength = 0;
-let disposeDataHandler: { dispose(): void } | null = null;
 const localLogViewerRef = ref<HTMLElement | null>(null);
-const localTerminalViewerRef = ref<HTMLElement | null>(null);
+const terminalContainers = new Map<string, HTMLElement>();
+const observedTerminalElements = new Set<HTMLElement>();
 
 const searchQuery = ref("");
 const filterQuery = ref("");
@@ -151,9 +160,10 @@ const terminalTheme = {
   brightWhite: "#e5e5e5",
 } as const;
 
-function focusTerminal() {
-  if (!props.selectedFile && props.sessionId && props.terminalToken) {
-    terminal?.focus();
+function focusTerminal(tabId: string) {
+  if (!props.selectedFile && props.sessionId) {
+    const inst = terminalInstances.get(tabId);
+    if (inst) inst.terminal.focus();
   }
 }
 
@@ -165,60 +175,69 @@ function terminalEmptyState() {
     };
   }
 
-  if (!props.terminalToken) {
+  if (terminalTabs.value.length === 0) {
     return {
-      title: "Preparing Terminal",
-      text: "The SSH connection is established. Initializing the interactive shell and syncing terminal size.",
+      title: "No Terminal Open",
+      text: "Click the + button to open a new SSH terminal.",
     };
   }
 
   return null;
 }
 
-function syncTerminalResize() {
-  if (!terminal || !fitAddon || !props.terminalToken) return;
+function syncTerminalResize(tabId: string) {
+  const inst = terminalInstances.get(tabId);
+  const tab = terminalTabs.value.find(t => t.id === tabId);
+  if (!inst || !tab || !tab.token) return;
 
-  fitAddon.fit();
-  emit("resize-terminal", {
-    cols: Math.max(20, terminal.cols),
-    rows: Math.max(8, terminal.rows),
-  });
+  inst.fitAddon.fit();
+  emit("resize-terminal", tabId,
+    Math.max(20, inst.terminal.cols),
+    Math.max(8, inst.terminal.rows)
+  );
 }
 
-function resetTerminalView() {
-  if (!terminal) return;
+function resetTerminalView(tabId: string) {
+  const inst = terminalInstances.get(tabId);
+  const tab = terminalTabs.value.find(t => t.id === tabId);
+  if (!inst || !tab) return;
 
-  terminal.reset();
-  lastRenderedTerminalLength = 0;
+  inst.terminal.reset();
+  inst.lastRenderedLength = 0;
 
-  if (terminalContent.value) {
-    terminal.write(terminalContent.value);
-    lastRenderedTerminalLength = terminalContent.value.length;
+  if (tab.content) {
+    inst.terminal.write(tab.content);
+    inst.lastRenderedLength = tab.content.length;
   }
 }
 
 function syncTerminalOutput() {
-  if (!terminal) return;
+  for (const tab of terminalTabs.value) {
+    const inst = terminalInstances.get(tab.id);
+    if (!inst) continue;
 
-  if (terminalContent.value.length < lastRenderedTerminalLength) {
-    resetTerminalView();
-    return;
+    if (tab.content.length < inst.lastRenderedLength) {
+      resetTerminalView(tab.id);
+      continue;
+    }
+
+    const chunk = tab.content.slice(inst.lastRenderedLength);
+    if (!chunk) continue;
+
+    inst.terminal.write(chunk);
+    inst.lastRenderedLength = tab.content.length;
   }
-
-  const chunk = terminalContent.value.slice(lastRenderedTerminalLength);
-  if (!chunk) return;
-
-  terminal.write(chunk);
-  lastRenderedTerminalLength = terminalContent.value.length;
 }
 
 async function handleTerminalContextMenu() {
-  if (props.selectedFile || !terminal || !props.terminalToken) return;
+  if (props.selectedFile || !activeTerminalTabId.value) return;
+  const tab = terminalTabs.value.find(t => t.id === activeTerminalTabId.value);
+  if (!tab || !tab.token) return;
   
   try {
     const text = await readText();
     if (text) {
-      emit("write-terminal", text);
+      emit("write-terminal", activeTerminalTabId.value, text);
     }
   } catch (error) {
     console.error("Failed to read clipboard:", error);
@@ -239,18 +258,21 @@ watch(
 );
 
 watch(
-  terminalContent,
+  () => terminalTabs.value.map(t => t.content),
   () => {
     syncTerminalOutput();
   },
-  { flush: "post" },
+  { flush: "post", deep: true },
 );
 
 watch(
   () => props.selectedFile,
   (selectedFile) => {
     if (selectedFile) {
-      terminal?.blur();
+      if (activeTerminalTabId.value) {
+        const inst = terminalInstances.get(activeTerminalTabId.value);
+        if (inst) inst.terminal.blur();
+      }
       void nextTick(() => {
         if (localLogViewerRef.value) {
           localLogViewerRef.value.scrollTop = localLogViewerRef.value.scrollHeight;
@@ -259,46 +281,38 @@ watch(
       return;
     }
 
-    void nextTick(() => focusTerminal());
+    if (activeTerminalTabId.value) {
+      void nextTick(() => focusTerminal(activeTerminalTabId.value!));
+    }
   },
 );
 
 watch(
-  () => [props.sessionId, props.terminalToken, props.selectedFile] as const,
-  ([sessionId, terminalToken, selectedFile]) => {
-    if (!terminal) return;
+  () => [props.sessionId, activeTerminalTabId.value, props.selectedFile] as const,
+  ([sessionId, activeTabId, selectedFile]) => {
+    if (!activeTabId) return;
+    const inst = terminalInstances.get(activeTabId);
+    const tab = terminalTabs.value.find(t => t.id === activeTabId);
+    if (!inst || !tab) return;
 
-    const isInteractive = Boolean(sessionId && terminalToken && !selectedFile);
-    terminal.options.cursorBlink = isInteractive;
-    terminal.options.theme = {
+    const isInteractive = Boolean(sessionId && tab.token && !selectedFile);
+    inst.terminal.options.cursorBlink = isInteractive;
+    inst.terminal.options.theme = {
       ...terminalTheme,
       cursor: isInteractive ? terminalTheme.cursor : "transparent",
     };
 
     if (!isInteractive) {
-      terminal.blur();
+      inst.terminal.blur();
     }
   },
   { flush: "post" },
 );
 
-watch(
-  () => props.terminalToken,
-  () => {
-    resetTerminalView();
-    void nextTick(() => {
-      syncTerminalResize();
-      focusTerminal();
-    });
-  },
-);
+function createTerminal(tabId: string, element: HTMLElement) {
+  if (terminalInstances.has(tabId)) return;
 
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown);
-
-  terminalViewerRef.value = localTerminalViewerRef.value;
-
-  terminal = new Terminal({
+  const terminal = new Terminal({
     cursorBlink: false,
     fontFamily: "Consolas, 'Cascadia Mono', 'SFMono-Regular', monospace",
     fontSize: 13,
@@ -316,31 +330,125 @@ onMounted(() => {
     },
   });
 
-  fitAddon = new FitAddon();
+  const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
+  terminal.open(element);
 
-  if (localTerminalViewerRef.value) {
-    terminal.open(localTerminalViewerRef.value);
-    syncTerminalOutput();
-    focusTerminal();
-    syncTerminalResize();
+  const disposeDataHandler = terminal.onData((data) => {
+    if (!props.selectedFile) {
+      emit("write-terminal", tabId, data);
+    }
+  });
 
-    resizeObserver = new ResizeObserver(() => syncTerminalResize());
-    resizeObserver.observe(localTerminalViewerRef.value);
+  terminalInstances.set(tabId, {
+    terminal,
+    fitAddon,
+    disposeDataHandler,
+    lastRenderedLength: 0,
+  });
+
+  syncTerminalOutput();
+  if (activeTerminalTabId.value === tabId) {
+    focusTerminal(tabId);
+    syncTerminalResize(tabId);
+  }
+}
+
+function destroyTerminal(tabId: string) {
+  const inst = terminalInstances.get(tabId);
+  if (inst) {
+    inst.disposeDataHandler?.dispose();
+    inst.terminal.dispose();
+    terminalInstances.delete(tabId);
+  }
+}
+
+function setTerminalContainer(tabId: string, el: unknown) {
+  if (el instanceof HTMLElement) {
+    terminalContainers.set(tabId, el);
+    return;
   }
 
-  disposeDataHandler = terminal.onData((data) => {
-    if (!props.selectedFile) {
-      emit("write-terminal", data);
+  terminalContainers.delete(tabId);
+}
+
+function syncTerminalContainerMounts(tabs: { id: string }[]) {
+  for (const tab of tabs) {
+    const el = terminalContainers.get(tab.id);
+    if (el && !terminalInstances.has(tab.id)) {
+      createTerminal(tab.id, el);
     }
+  }
+}
+
+function syncResizeObserverTargets(tabs: { id: string }[]) {
+  if (!resizeObserver) return;
+
+  for (const el of observedTerminalElements) {
+    resizeObserver.unobserve(el);
+  }
+  observedTerminalElements.clear();
+
+  for (const tab of tabs) {
+    const el = terminalContainers.get(tab.id);
+    if (el) {
+      resizeObserver.observe(el);
+      observedTerminalElements.add(el);
+    }
+  }
+}
+
+watch(
+  () => terminalTabs.value,
+  (newTabs) => {
+    const newIds = new Set(newTabs.map(t => t.id));
+    for (const id of terminalInstances.keys()) {
+      if (!newIds.has(id)) {
+        destroyTerminal(id);
+      }
+    }
+
+    void nextTick(() => {
+      syncTerminalContainerMounts(newTabs);
+      syncResizeObserverTargets(newTabs);
+    });
+  },
+  { deep: true, immediate: true }
+);
+
+watch(
+  activeTerminalTabId,
+  (newId) => {
+    if (newId) {
+      void nextTick(() => {
+        syncTerminalResize(newId);
+        focusTerminal(newId);
+      });
+    }
+  }
+);
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+
+  resizeObserver = new ResizeObserver(() => {
+    if (activeTerminalTabId.value) {
+      syncTerminalResize(activeTerminalTabId.value);
+    }
+  });
+
+  void nextTick(() => {
+    syncTerminalContainerMounts(terminalTabs.value);
+    syncResizeObserverTargets(terminalTabs.value);
   });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown);
   resizeObserver?.disconnect();
-  disposeDataHandler?.dispose();
-  terminal?.dispose();
+  for (const tabId of terminalInstances.keys()) {
+    destroyTerminal(tabId);
+  }
 });
 </script>
 
@@ -348,7 +456,24 @@ onBeforeUnmount(() => {
   <div class="log-content">
     <div class="toolbar">
       <div class="tab-title">
-        {{ selectedFile ? selectedFile.split("/").pop() : "SSH Terminal" }}
+        <template v-if="selectedFile">
+          {{ selectedFile.split("/").pop() }}
+        </template>
+        <template v-else>
+          <div v-if="hostSessionTabs.length > 0" class="host-tabs-inline">
+            <div
+              v-for="session in hostSessionTabs"
+              :key="session.sessionId"
+              class="host-tab-inline"
+              :class="{ active: activeSessionId === session.sessionId }"
+              @click="activeSessionId = session.sessionId"
+            >
+              <span>{{ session.label }}</span>
+              <button class="close-tab-btn" @click.stop="emit('disconnect-session', session.sessionId)">×</button>
+            </div>
+          </div>
+          <span v-else>SSH Terminal</span>
+        </template>
       </div>
       <div class="actions">
         <template v-if="selectedFile">
@@ -382,26 +507,49 @@ onBeforeUnmount(() => {
           <button v-if="tailToken" v-show="!showSearch && !showFilter" class="btn btn-sm btn-danger" @click="emit('stop')">Stop</button>
           <button v-if="!tailToken" v-show="!showSearch && !showFilter" class="btn btn-sm btn-success" @click="emit('start')">Start</button>
         </template>
-        <div v-else class="terminal-badge" :class="{ active: terminalToken }">
-          {{ terminalToken ? "Terminal Ready" : "Initializing" }}
+        <div v-else class="terminal-badge" :class="{ active: hostSessionTabs.length > 0 }">
+          {{ hostSessionTabs.length > 0 ? `${hostSessionTabs.length} Terminal(s)` : "No Session" }}
         </div>
       </div>
     </div>
 
     <div class="viewer-stack">
       <div
+        v-show="!selectedFile"
+        class="terminal-tabs-header"
+        v-if="terminalTabs.length > 0"
+      >
+        <div
+          v-for="tab in terminalTabs"
+          :key="tab.id"
+          class="terminal-tab"
+          :class="{ active: activeTerminalTabId === tab.id }"
+          @click="activeTerminalTabId = tab.id"
+        >
+          <span>{{ tab.name }}</span>
+          <button class="close-tab-btn" @click.stop="emit('stop-terminal', tab.id)">×</button>
+        </div>
+        <button class="add-tab-btn" @click="emit('start-terminal')">+</button>
+      </div>
+
+      <div
+        v-for="tab in terminalTabs"
+        :key="tab.id"
         class="terminal-viewer"
-        :class="{ inactive: !sessionId || !terminalToken }"
-        @click="focusTerminal"
+        v-show="activeTerminalTabId === tab.id"
+        :class="{ inactive: !sessionId || !tab.token }"
+        @click="focusTerminal(tab.id)"
         @contextmenu="handleTerminalContextMenu"
       >
-        <div ref="localTerminalViewerRef" class="terminal-host"></div>
+        <div :ref="(el) => setTerminalContainer(tab.id, el)" :data-tab-id="tab.id" class="terminal-host"></div>
       </div>
+
       <div v-if="terminalEmptyState()" class="terminal-empty-state">
         <div class="terminal-empty-card">
           <div class="terminal-empty-kicker">Integrated Terminal</div>
           <div class="terminal-empty-title">{{ terminalEmptyState()?.title }}</div>
           <div class="terminal-empty-text">{{ terminalEmptyState()?.text }}</div>
+          <button v-if="sessionId" class="btn btn-primary" style="margin-top: 1rem" @click="emit('start-terminal')">Start Terminal</button>
         </div>
       </div>
 

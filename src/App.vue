@@ -11,6 +11,7 @@ import RenameEntryModal from "./components/logs/RenameEntryModal.vue";
 import LogsWorkspace from "./components/logs/LogsWorkspace.vue";
 import { useLogCatApp } from "./composables/useLogCatApp";
 import "./styles/app.css";
+import { computed } from "vue";
 
 const {
   appWindow,
@@ -26,21 +27,21 @@ const {
   password,
   keyPath,
   passphrase,
+  activeSessionId,
+  hostSessions,
   sessionId,
-  currentConnectedHostId,
   currentConnectingHostId,
   entries,
   currentPath,
   selectedFile,
   showFavorites,
   tailToken,
-  terminalToken,
+  terminalTabs,
+  activeTerminalTabId,
   content,
-  terminalContent,
   isConnecting,
   errorMsg,
   logViewer,
-  terminalViewer,
   isAutoScroll,
   currentHostFavorites,
   highlightedLines,
@@ -55,6 +56,8 @@ const {
   enter,
   startTail,
   stopTail,
+  startTerminal,
+  stopTerminal,
   writeTerminal,
   cdInTerminal,
   resizeTerminal,
@@ -106,6 +109,35 @@ const {
   closeCreateEntryModal,
   confirmCreateEntry,
 } = useLogCatApp();
+
+const hostSessionTabs = computed(() => {
+  const totals = new Map<string, number>();
+  for (const session of hostSessions.value) {
+    totals.set(session.hostId, (totals.get(session.hostId) ?? 0) + 1);
+  }
+
+  const seen = new Map<string, number>();
+  return hostSessions.value.map((session) => {
+    const index = (seen.get(session.hostId) ?? 0) + 1;
+    seen.set(session.hostId, index);
+
+    const baseLabel = session.profile.name || session.profile.host;
+    const suffix = (totals.get(session.hostId) ?? 1) > 1 ? ` #${index}` : "";
+
+    return {
+      sessionId: session.sessionId,
+      label: `${baseLabel}${suffix}`,
+    };
+  });
+});
+
+const hostConnectionCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {};
+  for (const session of hostSessions.value) {
+    counts[session.hostId] = (counts[session.hostId] ?? 0) + 1;
+  }
+  return counts;
+});
 </script>
 
 <template>
@@ -119,7 +151,7 @@ const {
         <HostsDashboard
           v-if="activeTab === 'hosts'"
           :saved-hosts="savedHosts"
-          :current-connected-host-id="currentConnectedHostId"
+          :host-connection-counts="hostConnectionCounts"
           :current-connecting-host-id="currentConnectingHostId"
           @connect="connectToHost"
           @edit="openEditModal"
@@ -127,47 +159,52 @@ const {
           @add="openAddModal"
         />
 
-        <LogsWorkspace
-          v-else
-          v-model:current-path="currentPath"
-          v-model:content="content"
-          v-model:terminal-content="terminalContent"
-          v-model:is-auto-scroll="isAutoScroll"
-          v-model:log-viewer-ref="logViewer"
-          v-model:terminal-viewer-ref="terminalViewer"
-          v-model:is-dragging-over-sidebar="isDraggingOverSidebar"
-          :session-id="sessionId"
-          :show-favorites="showFavorites"
-          :entries="entries"
-          :current-host-favorites="currentHostFavorites"
-          :selected-file="selectedFile"
-          :tail-token="tailToken"
-          :terminal-token="terminalToken"
-          :highlighted-lines="highlightedLines"
-          :is-favorite="isFavorite"
-          :transfer-progress="transferProgress"
-          @toggle-favorites="toggleFavoritesPanel"
-          @disconnect="disconnect"
-          @select-hosts-tab="activeTab = 'hosts'"
-          @refresh="refresh"
-          @up="up"
-          @open-entry="enter"
-          @open-favorite="openFavorite"
-          @toggle-favorite="toggleFavorite"
-          @download-file="downloadFile"
-          @edit-entry="openFileEditor"
-          @rename-entry="requestRenameEntry"
-          @change-mode="requestChangeMode"
-          @delete-entry="requestDeleteEntry"
-          @create-file="requestCreateFile"
-          @create-dir="requestCreateDir"
-          @clear="clearContent"
-          @stop="stopTail"
-          @start="startTail"
-          @write-terminal="writeTerminal"
-          @cd-terminal="cdInTerminal"
-          @resize-terminal="resizeTerminal"
-        />
+        <template v-else-if="activeTab === 'logs'">
+          <LogsWorkspace
+            v-model:active-session-id="activeSessionId"
+            v-model:current-path="currentPath"
+            v-model:content="content"
+            v-model:terminal-tabs="terminalTabs"
+            v-model:active-terminal-tab-id="activeTerminalTabId"
+            v-model:is-auto-scroll="isAutoScroll"
+            v-model:log-viewer-ref="logViewer"
+            v-model:is-dragging-over-sidebar="isDraggingOverSidebar"
+            :session-id="sessionId"
+            :host-session-tabs="hostSessionTabs"
+            :show-favorites="showFavorites"
+            :entries="entries"
+            :current-host-favorites="currentHostFavorites"
+            :selected-file="selectedFile"
+            :tail-token="tailToken"
+            :highlighted-lines="highlightedLines"
+            :is-favorite="isFavorite"
+            :transfer-progress="transferProgress"
+            @toggle-favorites="toggleFavoritesPanel"
+            @disconnect="disconnect"
+            @disconnect-session="disconnect"
+            @select-hosts-tab="activeTab = 'hosts'"
+            @refresh="refresh"
+            @up="up"
+            @open-entry="enter"
+            @open-favorite="openFavorite"
+            @toggle-favorite="toggleFavorite"
+            @download-file="downloadFile"
+            @edit-entry="openFileEditor"
+            @rename-entry="requestRenameEntry"
+            @change-mode="requestChangeMode"
+            @delete-entry="requestDeleteEntry"
+            @create-file="requestCreateFile"
+            @create-dir="requestCreateDir"
+            @clear="clearContent"
+            @stop="stopTail"
+            @start="startTail"
+            @write-terminal="writeTerminal"
+            @cd-terminal="cdInTerminal"
+            @resize-terminal="resizeTerminal"
+            @start-terminal="startTerminal"
+            @stop-terminal="stopTerminal"
+          />
+        </template>
       </main>
     </div>
 

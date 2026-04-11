@@ -57,6 +57,39 @@ export type TailEvent = {
   chunk: string;
 };
 
+export type HostSession = {
+  sessionId: string;
+  hostId: string;
+  profile: HostProfile;
+  currentPath: string;
+  entries: DirEntry[];
+  selectedFile: string | null;
+  tailToken: string | null;
+  content: string;
+  highlightedLines: HighlightedLine[];
+  terminalTabs: TerminalTab[];
+  activeTerminalTabId: string | null;
+  transferProgress: {
+    fileName: string;
+    transferred: number;
+    total: number;
+  } | null;
+  loading: boolean;
+};
+
+export type HostSessionTab = {
+  sessionId: string;
+  label: string;
+};
+
+export type TerminalTab = {
+  id: string;
+  token: string | null;
+  content: string;
+  name: string;
+  isStarting: boolean;
+};
+
 export type TerminalEvent = {
   token: string;
   session_id: string;

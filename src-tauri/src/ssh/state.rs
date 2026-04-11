@@ -28,7 +28,7 @@ pub struct SshConn {
     pub handle: AsyncMutex<Handle<super::session::Client>>,
     pub opts: ConnectOptions,
     pub watchers: StdMutex<HashMap<String, Arc<Watcher>>>,
-    pub terminal: AsyncMutex<Option<Arc<TerminalSession>>>,
+    pub terminal: AsyncMutex<HashMap<String, Arc<TerminalSession>>>,
 }
 
 pub struct Watcher {

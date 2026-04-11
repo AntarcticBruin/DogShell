@@ -1,24 +1,25 @@
 <script setup lang="ts">
-import type { DirEntry, FavoriteItem, HighlightedLine } from "../../types/app";
+import type { DirEntry, FavoriteItem, HighlightedLine, HostSessionTab } from "../../types/app";
 import LogSidebar from "./LogSidebar.vue";
 import LogViewer from "./LogViewer.vue";
 
+const activeSessionId = defineModel<string | null>("activeSessionId", { required: true });
 const currentPath = defineModel<string>("currentPath", { required: true });
 const content = defineModel<string>("content", { required: true });
-const terminalContent = defineModel<string>("terminalContent", { required: true });
+const terminalTabs = defineModel<import("../../types/app").TerminalTab[]>("terminalTabs", { required: true });
+const activeTerminalTabId = defineModel<string | null>("activeTerminalTabId", { required: true });
 const isAutoScroll = defineModel<boolean>("isAutoScroll", { required: true });
 const logViewerRef = defineModel<HTMLElement | null>("logViewerRef", { required: true });
-const terminalViewerRef = defineModel<HTMLElement | null>("terminalViewerRef", { required: true });
 const isDraggingOverSidebar = defineModel<boolean>("isDraggingOverSidebar", { required: true });
 
 defineProps<{
   sessionId: string | null;
+  hostSessionTabs: HostSessionTab[];
   showFavorites: boolean;
   entries: DirEntry[];
   currentHostFavorites: FavoriteItem[];
   selectedFile: string | null;
   tailToken: string | null;
-  terminalToken: string | null;
   highlightedLines: HighlightedLine[];
   isFavorite: (path: string) => boolean;
   transferProgress: { fileName: string; transferred: number; total: number } | null;
@@ -27,6 +28,7 @@ defineProps<{
 const emit = defineEmits<{
   (event: "toggle-favorites"): void;
   (event: "disconnect"): void;
+  (event: "disconnect-session", sessionId: string): void;
   (event: "select-hosts-tab"): void;
   (event: "refresh"): void;
   (event: "up"): void;
@@ -43,9 +45,11 @@ const emit = defineEmits<{
   (event: "clear"): void;
   (event: "stop"): void;
   (event: "start"): void;
-  (event: "write-terminal", data: string): void;
-  (event: "cd-terminal", path: string): void;
-  (event: "resize-terminal", cols: number, rows: number): void;
+  (event: "write-terminal", tabId: string, data: string): void;
+  (event: "cd-terminal", tabId: string, path: string): void;
+  (event: "resize-terminal", tabId: string, cols: number, rows: number): void;
+  (event: "start-terminal"): void;
+  (event: "stop-terminal", tabId: string): void;
 }>();
 </script>
 
@@ -76,25 +80,29 @@ const emit = defineEmits<{
       @delete-entry="emit('delete-entry', $event)"
       @create-file="emit('create-file')"
       @create-dir="emit('create-dir')"
-      @cd-terminal="emit('cd-terminal', $event)"
+      @cd-terminal="activeTerminalTabId && emit('cd-terminal', activeTerminalTabId, $event)"
     />
 
     <LogViewer
       v-model:content="content"
-      v-model:terminal-content="terminalContent"
+      v-model:active-session-id="activeSessionId"
+      v-model:terminal-tabs="terminalTabs"
+      v-model:active-terminal-tab-id="activeTerminalTabId"
       v-model:is-auto-scroll="isAutoScroll"
       v-model:log-viewer-ref="logViewerRef"
-      v-model:terminal-viewer-ref="terminalViewerRef"
       :session-id="sessionId"
+      :host-session-tabs="hostSessionTabs"
       :selected-file="selectedFile"
       :tail-token="tailToken"
-      :terminal-token="terminalToken"
       :highlighted-lines="highlightedLines"
       @clear="emit('clear')"
       @stop="emit('stop')"
       @start="emit('start')"
-      @write-terminal="emit('write-terminal', $event)"
-      @resize-terminal="emit('resize-terminal', $event.cols, $event.rows)"
+      @write-terminal="(tabId, data) => emit('write-terminal', tabId, data)"
+      @resize-terminal="(tabId, cols, rows) => emit('resize-terminal', tabId, cols, rows)"
+      @start-terminal="emit('start-terminal')"
+      @stop-terminal="(tabId) => emit('stop-terminal', tabId)"
+      @disconnect-session="(id) => emit('disconnect-session', id)"
     />
   </div>
 </template>

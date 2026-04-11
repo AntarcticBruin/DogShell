@@ -3,7 +3,7 @@ import type { HostProfile } from "../../types/app";
 
 defineProps<{
   savedHosts: HostProfile[];
-  currentConnectedHostId: string | null;
+  hostConnectionCounts: Record<string, number>;
   currentConnectingHostId: string | null;
 }>();
 
@@ -25,10 +25,12 @@ const emit = defineEmits<{
         v-for="host in savedHosts"
         :key="host.id"
         class="host-card"
-        :class="{ connected: currentConnectedHostId === host.id, connecting: currentConnectingHostId === host.id }"
+        :class="{ connected: (hostConnectionCounts[host.id] ?? 0) > 0, connecting: currentConnectingHostId === host.id }"
         @click="emit('connect', host)"
       >
-        <div v-if="currentConnectedHostId === host.id" class="card-status">Connected</div>
+        <div v-if="(hostConnectionCounts[host.id] ?? 0) > 0" class="card-status">
+          Connected{{ (hostConnectionCounts[host.id] ?? 0) > 1 ? ` ×${hostConnectionCounts[host.id]}` : "" }}
+        </div>
         <div v-else-if="currentConnectingHostId === host.id" class="card-status pending">Connecting</div>
         <div class="card-icon">
           <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
