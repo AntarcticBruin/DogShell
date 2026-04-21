@@ -34,6 +34,7 @@ defineProps<{
   highlightedLines: HighlightedLine[];
   isFavorite: (path: string) => boolean;
   transferProgress: { fileName: string; transferred: number; total: number } | null;
+  showSidebar?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -65,52 +66,54 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="logs-container" :style="{ '--sidebar-pane-width': isSidebarCollapsed ? '0px' : '260px' }">
-    <div class="sidebar-pane" :class="{ collapsed: isSidebarCollapsed }">
-      <LogSidebar
-        v-model:current-path="currentPath"
-        v-model:is-dragging-over="isDraggingOverSidebar"
-        :session-id="sessionId"
-        :show-favorites="showFavorites"
-        :entries="entries"
-        :current-host-favorites="currentHostFavorites"
-        :selected-file="selectedFile"
-        :is-favorite="isFavorite"
-        :transfer-progress="transferProgress"
-        @toggle-favorites="emit('toggle-favorites')"
-        @disconnect="emit('disconnect')"
-        @select-hosts-tab="emit('select-hosts-tab')"
-        @refresh="emit('refresh')"
-        @up="emit('up')"
-        @open-entry="emit('open-entry', $event)"
-        @open-favorite="emit('open-favorite', $event)"
-        @toggle-favorite="emit('toggle-favorite', $event)"
-        @download-file="emit('download-file', $event)"
-        @edit-entry="emit('edit-entry', $event)"
-        @rename-entry="emit('rename-entry', $event)"
-        @change-mode="emit('change-mode', $event)"
-        @delete-entry="emit('delete-entry', $event)"
-        @create-file="emit('create-file')"
-        @create-dir="emit('create-dir')"
-        @cd-terminal="activeTerminalTabId && emit('cd-terminal', activeTerminalTabId, $event)"
-      />
-    </div>
+  <div class="logs-container" :style="{ '--sidebar-pane-width': showSidebar === false ? '0px' : (isSidebarCollapsed ? '0px' : '260px') }">
+    <template v-if="showSidebar !== false">
+      <div class="sidebar-pane" :class="{ collapsed: isSidebarCollapsed }">
+        <LogSidebar
+          v-model:current-path="currentPath"
+          v-model:is-dragging-over="isDraggingOverSidebar"
+          :session-id="sessionId"
+          :show-favorites="showFavorites"
+          :entries="entries"
+          :current-host-favorites="currentHostFavorites"
+          :selected-file="selectedFile"
+          :is-favorite="isFavorite"
+          :transfer-progress="transferProgress"
+          @toggle-favorites="emit('toggle-favorites')"
+          @disconnect="emit('disconnect')"
+          @select-hosts-tab="emit('select-hosts-tab')"
+          @refresh="emit('refresh')"
+          @up="emit('up')"
+          @open-entry="emit('open-entry', $event)"
+          @open-favorite="emit('open-favorite', $event)"
+          @toggle-favorite="emit('toggle-favorite', $event)"
+          @download-file="emit('download-file', $event)"
+          @edit-entry="emit('edit-entry', $event)"
+          @rename-entry="emit('rename-entry', $event)"
+          @change-mode="emit('change-mode', $event)"
+          @delete-entry="emit('delete-entry', $event)"
+          @create-file="emit('create-file')"
+          @create-dir="emit('create-dir')"
+          @cd-terminal="activeTerminalTabId && emit('cd-terminal', activeTerminalTabId, $event)"
+        />
+      </div>
 
-    <button
-      class="sidebar-floating-toggle icon-btn"
-      :class="{ collapsed: isSidebarCollapsed }"
-      :title="isSidebarCollapsed ? 'Show File Explorer' : 'Hide File Explorer'"
-      @click="isSidebarCollapsed = !isSidebarCollapsed"
-    >
-      <span class="sidebar-toggle-visual" aria-hidden="true">
-        <svg v-if="isSidebarCollapsed" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-        <svg v-else viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </span>
-    </button>
+      <button
+        class="sidebar-floating-toggle icon-btn"
+        :class="{ collapsed: isSidebarCollapsed }"
+        :title="isSidebarCollapsed ? 'Show File Explorer' : 'Hide File Explorer'"
+        @click="isSidebarCollapsed = !isSidebarCollapsed"
+      >
+        <span class="sidebar-toggle-visual" aria-hidden="true">
+          <svg v-if="isSidebarCollapsed" viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </span>
+      </button>
+    </template>
 
     <LogViewer
       v-model:content="content"

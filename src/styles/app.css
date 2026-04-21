@@ -26,11 +26,14 @@
 *::-webkit-scrollbar-corner { background: transparent; }
 
 body { margin: 0; font-family: var(--font-sans); background: var(--bg-base); color: var(--text-main); overflow: hidden; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-button, input { font: inherit; }
+button, input, select, textarea { font: inherit; }
 input { background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: var(--radius-sm); outline: none; transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease; }
 input::placeholder { color: #7d7d7d; }
 input:hover { border-color: var(--border-soft); }
 input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+select { background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-main); padding: 10px; border-radius: var(--radius-sm); outline: none; transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23cccccc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 14px 14px; padding-right: 36px; }
+select:hover { border-color: var(--border-soft); }
+select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 .app-container { display: flex; flex-direction: column; height: 100vh; }
 .app-body { display: flex; flex: 1; overflow: hidden; }
@@ -458,6 +461,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
 .file-picker-btn { white-space: nowrap; }
 .form-row { display: grid; grid-template-columns: minmax(96px, 1fr) minmax(0, 2fr); gap: 12px; align-items: start; }
 .modal-body input { width: 100%; display: block; }
+.modal-body select { width: 100%; display: block; }
 .modal-body input[type="number"] { appearance: textfield; }
 .modal-body input[type="number"]::-webkit-outer-spin-button, .modal-body input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 

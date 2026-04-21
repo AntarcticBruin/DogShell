@@ -10,6 +10,8 @@ import type {
   FavoriteItem,
   HostProfile,
   HostSession,
+  LocalConnectOptions,
+  LocalShell,
   TailEvent,
   TerminalEvent,
   TerminalTab,
@@ -48,6 +50,12 @@ export function useLogCatApp() {
   const password = ref("");
   const keyPath = ref("");
   const passphrase = ref("");
+  const connectionType = ref<"ssh" | "local">("ssh");
+  const localShell = ref<LocalShell>(
+    navigator.userAgent.toLowerCase().includes("windows") ? "cmd" : "sh",
+  );
+  const localShellPath = ref("");
+  const command = ref("");
 
   const activeSessionId = ref<string | null>(null);
   const hostSessions = ref<HostSession[]>([]);
@@ -284,6 +292,10 @@ export function useLogCatApp() {
     password.value = "";
     keyPath.value = "";
     passphrase.value = "";
+    connectionType.value = "ssh";
+    localShell.value = navigator.userAgent.toLowerCase().includes("windows") ? "cmd" : "sh";
+    localShellPath.value = "";
+    command.value = "";
   }
 
   function openAddModal() {
@@ -294,13 +306,30 @@ export function useLogCatApp() {
   function openEditModal(profile: HostProfile) {
     selectedHostId.value = profile.id;
     hostName.value = profile.name;
-    host.value = profile.host;
-    port.value = profile.port;
-    username.value = profile.username;
-    authType.value = profile.authType === "key" ? "key" : "password";
-    password.value = profile.authType === "key" ? "" : profile.password || "";
-    keyPath.value = profile.authType === "key" ? profile.keyPath : "";
-    passphrase.value = profile.authType === "key" ? profile.passphrase || "" : "";
+    connectionType.value = profile.connectionType || "ssh";
+    if (profile.connectionType === "local") {
+      localShell.value =
+        profile.localShell
+        || (navigator.userAgent.toLowerCase().includes("windows") ? "cmd" : "sh");
+      localShellPath.value = profile.localShellPath || "";
+      command.value = profile.command || "";
+      host.value = "";
+      port.value = 22;
+      username.value = "";
+      authType.value = "password";
+      password.value = "";
+      keyPath.value = "";
+      passphrase.value = "";
+    } else {
+      host.value = profile.host;
+      port.value = profile.port;
+      username.value = profile.username;
+      authType.value = profile.authType === "key" ? "key" : "password";
+      password.value = profile.authType === "key" ? "" : profile.password || "";
+      keyPath.value = profile.authType === "key" ? profile.keyPath : "";
+      passphrase.value = profile.authType === "key" ? profile.passphrase || "" : "";
+      command.value = "";
+    }
     isModalOpen.value = true;
   }
 
@@ -309,36 +338,60 @@ export function useLogCatApp() {
   }
 
   function saveHost() {
-    if (!host.value || !username.value) return;
-    if (authType.value === "key" && !keyPath.value) return;
+    if (connectionType.value === "local") {
+      const newProfile: HostProfile = {
+        id: selectedHostId.value || crypto.randomUUID(),
+        name: hostName.value || command.value || "Local Terminal",
+        host: "",
+        port: 0,
+        username: "",
+        connectionType: "local",
+        localShell: localShell.value,
+        localShellPath: localShellPath.value.trim() || undefined,
+        command: command.value,
+        authType: "password",
+        password: "",
+      };
 
-    const baseProfile = {
-      id: selectedHostId.value || crypto.randomUUID(),
-      name: hostName.value || host.value,
-      host: host.value,
-      port: port.value,
-      username: username.value,
-    };
-
-    const newProfile: HostProfile =
-      authType.value === "key"
-        ? {
-            ...baseProfile,
-            authType: "key",
-            keyPath: keyPath.value,
-            passphrase: passphrase.value || undefined,
-          }
-        : {
-            ...baseProfile,
-            authType: "password",
-            password: password.value,
-          };
-
-    const index = savedHosts.value.findIndex((item) => item.id === newProfile.id);
-    if (index >= 0) {
-      savedHosts.value[index] = newProfile;
+      const index = savedHosts.value.findIndex((item) => item.id === newProfile.id);
+      if (index >= 0) {
+        savedHosts.value[index] = newProfile;
+      } else {
+        savedHosts.value.push(newProfile);
+      }
     } else {
-      savedHosts.value.push(newProfile);
+      if (!host.value || !username.value) return;
+      if (authType.value === "key" && !keyPath.value) return;
+
+      const baseProfile = {
+        id: selectedHostId.value || crypto.randomUUID(),
+        name: hostName.value || host.value,
+        host: host.value,
+        port: port.value,
+        username: username.value,
+        connectionType: "ssh" as const,
+      };
+
+      const newProfile: HostProfile =
+        authType.value === "key"
+          ? {
+              ...baseProfile,
+              authType: "key",
+              keyPath: keyPath.value,
+              passphrase: passphrase.value || undefined,
+            }
+          : {
+              ...baseProfile,
+              authType: "password",
+              password: password.value,
+            };
+
+      const index = savedHosts.value.findIndex((item) => item.id === newProfile.id);
+      if (index >= 0) {
+        savedHosts.value[index] = newProfile;
+      } else {
+        savedHosts.value.push(newProfile);
+      }
     }
 
     closeModal();
@@ -351,13 +404,18 @@ export function useLogCatApp() {
   async function connectToHost(profile: HostProfile) {
     selectedHostId.value = profile.id;
     currentConnectingHostId.value = profile.id;
-    host.value = profile.host;
-    port.value = profile.port;
-    username.value = profile.username;
-    authType.value = profile.authType === "key" ? "key" : "password";
-    password.value = profile.authType === "key" ? "" : profile.password || "";
-    keyPath.value = profile.authType === "key" ? profile.keyPath : "";
-    passphrase.value = profile.authType === "key" ? profile.passphrase || "" : "";
+
+    const isLocal = profile.connectionType === "local";
+
+    if (!isLocal) {
+      host.value = profile.host;
+      port.value = profile.port;
+      username.value = profile.username;
+      authType.value = profile.authType === "key" ? "key" : "password";
+      password.value = profile.authType === "key" ? "" : profile.password || "";
+      keyPath.value = profile.authType === "key" ? profile.keyPath : "";
+      passphrase.value = profile.authType === "key" ? profile.passphrase || "" : "";
+    }
 
     loading.value = true;
     isConnecting.value = true;
@@ -365,30 +423,45 @@ export function useLogCatApp() {
     activeTab.value = "logs";
 
     try {
-      const options: ConnectOptions = {
-        host: host.value,
-        port: port.value,
-        username: username.value,
-        auth:
-          authType.value === "key"
-            ? {
-                type: "key",
-                key_path: keyPath.value,
-                passphrase: passphrase.value || null,
-              }
-            : {
-                type: "password",
-                password: password.value,
-              },
-        keepalive_ms: 15000,
-      };
+      let sessionId: string;
 
-      const result = await invoke<{ session_id: string }>("connect_ssh", { opts: options });
+      if (isLocal) {
+        const opts: LocalConnectOptions = {
+          name: profile.name,
+          shell: profile.localShell
+            || (navigator.userAgent.toLowerCase().includes("windows") ? "cmd" : "sh"),
+          shell_path: profile.localShellPath || undefined,
+          command: profile.command || "",
+        };
+        const result = await invoke<{ session_id: string }>("connect_local", { opts });
+        sessionId = result.session_id;
+      } else {
+        const options: ConnectOptions = {
+          host: host.value,
+          port: port.value,
+          username: username.value,
+          auth:
+            authType.value === "key"
+              ? {
+                  type: "key",
+                  key_path: keyPath.value,
+                  passphrase: passphrase.value || null,
+                }
+              : {
+                  type: "password",
+                  password: password.value,
+                },
+          keepalive_ms: 15000,
+        };
+        const result = await invoke<{ session_id: string }>("connect_ssh", { opts: options });
+        sessionId = result.session_id;
+      }
 
       const newSession: HostSession = {
-        sessionId: result.session_id,
+        sessionId,
         hostId: profile.id,
         profile,
+        connectionType: isLocal ? "local" : "ssh",
         currentPath: "/",
         entries: [],
         selectedFile: null,
@@ -400,16 +473,18 @@ export function useLogCatApp() {
         transferProgress: null,
         loading: false,
       };
-      
+
       hostSessions.value.push(newSession);
-      activeSessionId.value = result.session_id;
-      
-      clearDirectoryState();
-      await ensureTailListener();
+      activeSessionId.value = sessionId;
+
       await ensureTerminalListener();
-      await ensureTransferProgressListener();
+      if (!isLocal) {
+        clearDirectoryState();
+        await ensureTailListener();
+        await ensureTransferProgressListener();
+        await refresh();
+      }
       await startTerminal();
-      await refresh();
     } catch (error) {
       errorMsg.value = String(error);
       activeTab.value = "hosts";
@@ -425,24 +500,32 @@ export function useLogCatApp() {
 
     const sessionIndex = hostSessions.value.findIndex(s => s.sessionId === targetSessionId);
     if (sessionIndex === -1) return;
-    
+
     const session = hostSessions.value[sessionIndex];
 
-    await stopTail(targetSessionId);
     await Promise.all(session.terminalTabs.map(tab => stopTerminal(tab.id, targetSessionId)));
-    
-    try {
-      await invoke("disconnect_ssh", { sessionId: targetSessionId });
-    } catch (error) {
-      console.error(error);
+
+    if (session.connectionType === "local") {
+      try {
+        await invoke("disconnect_local", { sessionId: targetSessionId });
+      } catch (error) {
+        console.error(error);
+      }
+    } else {
+      await stopTail(targetSessionId);
+      try {
+        await invoke("disconnect_ssh", { sessionId: targetSessionId });
+      } catch (error) {
+        console.error(error);
+      }
     }
 
     hostSessions.value.splice(sessionIndex, 1);
-    
+
     if (activeSessionId.value === targetSessionId) {
       activeSessionId.value = hostSessions.value.length > 0 ? hostSessions.value[hostSessions.value.length - 1].sessionId : null;
     }
-    
+
     if (hostSessions.value.length === 0) {
       activeTab.value = "hosts";
     }
@@ -628,7 +711,17 @@ export function useLogCatApp() {
   async function startTerminal(cols?: number, rows?: number) {
     if (!sessionId.value || !currentSession.value) return;
 
+    const isLocal = currentSession.value.connectionType === "local";
+    if (isLocal) {
+      const existingTab = currentSession.value.terminalTabs.find(tab => tab.token || tab.isStarting);
+      if (existingTab) {
+        currentSession.value.activeTerminalTabId = existingTab.id;
+        return;
+      }
+    }
+
     const id = crypto.randomUUID();
+    const previousActiveTabId = currentSession.value.activeTerminalTabId;
     const newTab: TerminalTab = {
       id,
       token: null,
@@ -640,7 +733,8 @@ export function useLogCatApp() {
     currentSession.value.activeTerminalTabId = id;
 
     try {
-      const token = await invoke<string>("start_terminal", {
+      const command = isLocal ? "start_local_terminal" : "start_terminal";
+      const token = await invoke<string>(command, {
         sessionId: sessionId.value,
         cols,
         rows,
@@ -651,6 +745,14 @@ export function useLogCatApp() {
       }
     } catch (error) {
       errorMsg.value = `Failed to start terminal: ${error}`;
+      const tabIndex = currentSession.value.terminalTabs.findIndex(t => t.id === id);
+      if (tabIndex >= 0) {
+        currentSession.value.terminalTabs.splice(tabIndex, 1);
+      }
+      currentSession.value.activeTerminalTabId =
+        currentSession.value.terminalTabs.find(t => t.id === previousActiveTabId)?.id
+        || currentSession.value.terminalTabs[currentSession.value.terminalTabs.length - 1]?.id
+        || null;
     } finally {
       const tab = currentSession.value.terminalTabs.find(t => t.id === id);
       if (tab) {
@@ -669,8 +771,9 @@ export function useLogCatApp() {
 
     const tab = session.terminalTabs[tabIndex];
     if (tab.token) {
+      const command = session.connectionType === "local" ? "stop_local_terminal" : "stop_terminal";
       try {
-        await invoke("stop_terminal", { sessionId: targetSessionId, token: tab.token });
+        await invoke(command, { sessionId: targetSessionId, token: tab.token });
       } catch (error) {
         console.error(error);
       }
@@ -687,8 +790,11 @@ export function useLogCatApp() {
     const tab = currentSession.value.terminalTabs.find(t => t.id === tabId);
     if (!tab || !tab.token) return;
 
+    const isLocal = currentSession.value.connectionType === "local";
+    const command = isLocal ? "write_local_terminal" : "write_terminal";
+
     try {
-      await invoke("write_terminal", {
+      await invoke(command, {
         sessionId: sessionId.value,
         token: tab.token,
         data,
@@ -702,9 +808,33 @@ export function useLogCatApp() {
     if (!sessionId.value || !currentSession.value) return;
     const tab = currentSession.value.terminalTabs.find(t => t.id === tabId);
     if (!tab || !tab.token) return;
-    
+
+    const quoteForPosix = (value: string) => `'${value.replace(/'/g, `'\"'\"'`)}'`;
+    const quoteForCmd = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const quoteForPowerShell = (value: string) => `'${value.replace(/'/g, "''")}'`;
+    const buildCdCommand = () => {
+      if (currentSession.value?.connectionType === "local") {
+        switch (currentSession.value.profile.localShell) {
+          case "cmd":
+            return `cd /d ${quoteForCmd(path)}\r`;
+          case "powershell":
+          case "pwsh":
+            return `Set-Location -LiteralPath ${quoteForPowerShell(path)}\r`;
+          case "wsl":
+          case "bash":
+          case "zsh":
+          case "sh":
+            return `cd ${quoteForPosix(path)}\r`;
+          default:
+            return `cd ${quoteForCmd(path)}\r`;
+        }
+      }
+
+      return `cd ${quoteForPosix(path)}\r`;
+    };
+
     await closeSelectedFile();
-    await writeTerminal(tabId, ` cd ${path}\n`);
+    await writeTerminal(tabId, buildCdCommand());
   }
 
   async function resizeTerminal(tabId: string, cols: number, rows: number) {
@@ -712,8 +842,11 @@ export function useLogCatApp() {
     const tab = currentSession.value.terminalTabs.find(t => t.id === tabId);
     if (!tab || !tab.token) return;
 
+    const isLocal = currentSession.value.connectionType === "local";
+    const command = isLocal ? "resize_local_terminal" : "resize_terminal";
+
     try {
-      await invoke("resize_terminal", {
+      await invoke(command, {
         sessionId: sessionId.value,
         token: tab.token,
         cols,
@@ -1172,6 +1305,9 @@ export function useLogCatApp() {
     }
   });
 
+  // Computed to check if current session is local
+  const isLocalSession = computed(() => currentSession.value?.connectionType === "local");
+
   return {
     appWindow,
     activeTab,
@@ -1186,11 +1322,16 @@ export function useLogCatApp() {
     password,
     keyPath,
     passphrase,
+    connectionType,
+    localShell,
+    localShellPath,
+    command,
     activeSessionId,
     hostSessions,
     sessionId,
     currentConnectedHostId,
     currentConnectingHostId,
+    isLocalSession,
     entries,
     currentPath,
     selectedFile,

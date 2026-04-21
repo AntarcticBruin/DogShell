@@ -27,6 +27,12 @@ pub fn run() {
             ssh::create_file,
             ssh::create_dir,
             ssh::chmod_entry,
+            ssh::connect_local,
+            ssh::disconnect_local,
+            ssh::start_local_terminal,
+            ssh::stop_local_terminal,
+            ssh::write_local_terminal,
+            ssh::resize_local_terminal,
             window::show_main_window,
             window::default_ssh_key_dir
         ]);

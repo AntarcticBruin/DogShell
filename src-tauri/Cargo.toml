@@ -19,14 +19,16 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 async-trait = "0.1.89"
+encoding_rs = "0.8.35"
 futures = "0.3.32"
+portable-pty = "0.8.1"
 russh = "0.60.0"
 russh-keys = "0.49.2"
 russh-sftp = "2.1.1"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
-tokio = { version = "1", features = ["sync", "time", "io-util", "rt", "macros", "fs"] }
+tokio = { version = "1", features = ["sync", "time", "io-util", "rt", "macros", "fs", "process"] }
 ssh-key = "0.6"
 tauri-plugin-drag = "2.1.0"
 tauri-plugin-clipboard-manager = "2"

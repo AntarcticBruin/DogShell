@@ -67,3 +67,16 @@ pub struct TransferProgressEvent {
     pub transferred: u64,
     pub total: u64,
 }
+
+#[derive(Clone, Deserialize)]
+pub struct LocalConnectOptions {
+    pub name: String,
+    pub shell: String,
+    pub shell_path: Option<String>,
+    pub command: String,
+}
+
+#[derive(Serialize)]
+pub struct LocalConnectResult {
+    pub session_id: String,
+}

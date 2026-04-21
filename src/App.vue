@@ -27,10 +27,15 @@ const {
   password,
   keyPath,
   passphrase,
+  connectionType,
+  localShell,
+  localShellPath,
+  command,
   activeSessionId,
   hostSessions,
   sessionId,
   currentConnectingHostId,
+  isLocalSession,
   entries,
   currentPath,
   selectedFile,
@@ -179,6 +184,7 @@ const hostConnectionCounts = computed<Record<string, number>>(() => {
             :highlighted-lines="highlightedLines"
             :is-favorite="isFavorite"
             :transfer-progress="transferProgress"
+            :show-sidebar="!isLocalSession"
             @toggle-favorites="toggleFavoritesPanel"
             @disconnect="disconnect"
             @disconnect-session="disconnect"
@@ -218,6 +224,10 @@ const hostConnectionCounts = computed<Record<string, number>>(() => {
       v-model:password="password"
       v-model:key-path="keyPath"
       v-model:passphrase="passphrase"
+      v-model:connection-type="connectionType"
+      v-model:local-shell="localShell"
+      v-model:local-shell-path="localShellPath"
+      v-model:command="command"
       :is-open="isModalOpen"
       @close="closeModal"
       @save="saveHost"
@@ -282,7 +292,7 @@ const hostConnectionCounts = computed<Record<string, number>>(() => {
       <div class="loading-panel">
         <div class="loading-spinner" aria-hidden="true"></div>
         <div class="loading-title">Connecting</div>
-        <div class="loading-text">Establishing SSH session and loading the initial workspace.</div>
+        <div class="loading-text">Starting terminal session...</div>
       </div>
     </div>
   </div>

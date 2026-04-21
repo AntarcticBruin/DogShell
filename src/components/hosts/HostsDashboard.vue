@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HostProfile } from "../../types/app";
+import type { HostProfile, LocalShell } from "../../types/app";
 
 defineProps<{
   savedHosts: HostProfile[];
@@ -13,6 +13,27 @@ const emit = defineEmits<{
   (event: "delete", id: string): void;
   (event: "add"): void;
 }>();
+
+function localShellLabel(shell?: LocalShell) {
+  switch (shell) {
+    case "cmd":
+      return "Command Prompt";
+    case "powershell":
+      return "Windows PowerShell";
+    case "pwsh":
+      return "PowerShell";
+    case "wsl":
+      return "WSL";
+    case "bash":
+      return "bash";
+    case "zsh":
+      return "zsh";
+    case "sh":
+      return "sh";
+    default:
+      return "Local Terminal";
+  }
+}
 </script>
 
 <template>
@@ -33,15 +54,20 @@ const emit = defineEmits<{
         </div>
         <div v-else-if="currentConnectingHostId === host.id" class="card-status pending">Connecting</div>
         <div class="card-icon">
-          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+          <svg v-if="host.connectionType === 'local'" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5">
             <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
             <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
           </svg>
         </div>
         <div class="card-info">
           <div class="card-name">{{ host.name }}</div>
-          <div class="card-addr">{{ host.username }}@{{ host.host }}</div>
-          <div class="card-meta">{{ host.authType === "key" ? "SSH Key" : "Password" }}</div>
+          <div v-if="host.connectionType === 'local'" class="card-addr">{{ localShellLabel(host.localShell) }}</div>
+          <div v-else class="card-addr">{{ host.username }}@{{ host.host }}</div>
+          <div class="card-meta">{{ host.connectionType === 'local' ? "Local" : (host.authType === "key" ? "SSH Key" : "Password") }}</div>
         </div>
         <div class="card-actions">
           <button class="icon-btn" @click.stop="emit('edit', host)">

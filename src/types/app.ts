@@ -10,6 +10,10 @@ export type HostProfile = {
   host: string;
   port: number;
   username: string;
+  connectionType?: "ssh" | "local";
+  localShell?: LocalShell;
+  localShellPath?: string;
+  command?: string;
 } & (
   | {
       authType?: "password";
@@ -29,6 +33,15 @@ export type ConnectOptions = {
   auth: Auth;
   keepalive_ms?: number;
 };
+
+export type LocalConnectOptions = {
+  name: string;
+  shell: LocalShell;
+  shell_path?: string;
+  command: string;
+};
+
+export type LocalShell = "cmd" | "powershell" | "pwsh" | "wsl" | "sh" | "bash" | "zsh";
 
 export type DirEntry = {
   name: string;
@@ -62,6 +75,7 @@ export type HostSession = {
   sessionId: string;
   hostId: string;
   profile: HostProfile;
+  connectionType: "ssh" | "local";
   currentPath: string;
   entries: DirEntry[];
   selectedFile: string | null;

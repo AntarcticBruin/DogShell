@@ -151,7 +151,7 @@ function handleKeydown(e: KeyboardEvent) {
   }
   if (!props.selectedFile) return;
 
-  if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+  if (e.ctrlKey && e.key.toLowerCase() === "f") {
     e.preventDefault();
     if (e.shiftKey) {
       showFilter.value = true;
@@ -164,7 +164,7 @@ function handleKeydown(e: KeyboardEvent) {
       filterQuery.value = "";
       void nextTick(() => searchInputRef.value?.focus());
     }
-  } else if (e.key === 'Escape') {
+  } else if (e.key === "Escape") {
     if (showSearch.value || showFilter.value) {
       e.preventDefault();
       closeSearchOrFilter();
@@ -204,7 +204,7 @@ const terminalTheme = {
 function focusTerminal(tabId: string) {
   if (!props.selectedFile && props.sessionId) {
     const inst = terminalInstances.get(tabId);
-    if (inst) inst.terminal.focus();
+    inst?.terminal.focus();
   }
 }
 
@@ -429,8 +429,7 @@ watch(
   (selectedFile) => {
     if (selectedFile) {
       if (activeTerminalTabId.value) {
-        const inst = terminalInstances.get(activeTerminalTabId.value);
-        if (inst) inst.terminal.blur();
+        terminalInstances.get(activeTerminalTabId.value)?.terminal.blur();
       }
       void nextTick(() => {
         if (localLogViewerRef.value) {
@@ -498,6 +497,7 @@ function createTerminal(tabId: string, element: HTMLElement) {
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
   terminal.open(element);
+
   const contextMenuHandler = (e: MouseEvent) => {
     void openTerminalContextMenuForTab(e, tabId);
   };
@@ -611,8 +611,7 @@ watch(
   activeTerminalTabId,
   (newId, oldId) => {
     if (oldId) {
-      const oldInst = terminalInstances.get(oldId);
-      oldInst?.terminal.blur();
+      terminalInstances.get(oldId)?.terminal.blur();
     }
     if (newId) {
       void nextTick(() => {
@@ -624,7 +623,7 @@ watch(
 );
 
 onMounted(() => {
-  window.addEventListener('keydown', handleKeydown);
+  window.addEventListener("keydown", handleKeydown);
   window.addEventListener("click", handleGlobalClick);
   window.addEventListener("blur", handleGlobalClick);
 
@@ -641,7 +640,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("click", handleGlobalClick);
   window.removeEventListener("blur", handleGlobalClick);
   resizeObserver?.disconnect();
@@ -742,7 +741,7 @@ onBeforeUnmount(() => {
       >
         <div :ref="(el) => setTerminalContainer(tab.id, el)" :data-tab-id="tab.id" class="terminal-host"></div>
       </div>
-      
+
       <teleport to="body">
         <div
           v-if="terminalContextMenu"
@@ -797,7 +796,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-else class="empty-viewer">Select Start to load this file, or click the file again to close it.</div>
       </div>
-      
+
       <teleport to="body">
         <div
           v-if="logContextMenu"

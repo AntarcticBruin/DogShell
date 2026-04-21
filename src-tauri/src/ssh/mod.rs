@@ -1,5 +1,6 @@
 mod error;
 mod files;
+mod local;
 mod parsing;
 mod session;
 mod state;
@@ -250,4 +251,67 @@ pub async fn chmod_entry(
     files::chmod_entry(state.inner(), session_id, path, mode)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn connect_local(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    opts: LocalConnectOptions,
+) -> Result<LocalConnectResult, String> {
+    local::connect(opts, app).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn disconnect_local(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    local::disconnect(state.inner(), session_id).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn start_local_terminal(
+    app: tauri::AppHandle,
+    _state: State<'_, AppState>,
+    session_id: String,
+    cols: Option<u32>,
+    rows: Option<u32>,
+) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    local::start_terminal(state.inner(), app.clone(), session_id, cols, rows)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn stop_local_terminal(
+    state: State<'_, AppState>,
+    session_id: String,
+    token: String,
+) -> Result<(), String> {
+    local::stop(state, session_id, token).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn write_local_terminal(
+    state: State<'_, AppState>,
+    session_id: String,
+    token: String,
+    data: String,
+) -> Result<(), String> {
+    local::write(state, session_id, token, data).await.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn resize_local_terminal(
+    state: State<'_, AppState>,
+    session_id: String,
+    token: String,
+    cols: u32,
+    rows: u32,
+) -> Result<(), String> {
+    local::resize(state, session_id, token, cols, rows).await.map_err(|error| error.to_string())
 }
