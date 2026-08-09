@@ -1,3 +1,5 @@
+
+
 # DogShell 🐾
 
 ![homepng](https://gitee.com/Duelist/img/raw/master/2026/04/upgit_20260410_1775808540.png)
@@ -43,8 +45,8 @@
 
 1.  **克隆仓库**
     ```bash
-    git clone https://github.com/AntarcticBruin/LogCat.git
-    cd log-cat
+    git clone https://github.com/AntarcticBruin/DogShell.git
+    cd DogShell
     ```
 
 2.  **安装前端依赖**
